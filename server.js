@@ -36,7 +36,7 @@ app.get('/api/health', (req, res) => {
 // ChatGPT response endpoint with streaming
 app.post('/api/chat', async (req, res) => {
   try {
-    const { question, interviewContext } = req.body;
+    const { question, interviewContext, conversationHistory } = req.body;
     
     if (!OPENAI_API_KEY) {
       return res.status(500).json({ error: 'OpenAI API key not configured' });
@@ -65,22 +65,44 @@ GUIDELINES:
 7. Format the answer in an easy-to-read way with bullet points when helpful
 8. If the question is unclear, provide the most likely interpretation and answer
 
+FOR CODING QUESTIONS:
+- Provide complete, working code solutions
+- Use proper code blocks with language specification (e.g., \`\`\`javascript or \`\`\`python)
+- Include brief comments explaining key logic
+- If asked to modify previous code, reference and build upon your previous answer
+
 IMPORTANT: The candidate will read your answer while speaking, so:
-- Use natural, conversational language
+- Use natural, conversational language for explanations
 - Add brief pauses indicated by "..." for natural speech rhythm
 - Highlight KEY POINTS in bold
-- Keep sentences short and easy to speak`;
+- Keep explanation sentences short and easy to speak
+- For code, provide the code block FIRST, then a brief verbal explanation`;
 
+    // Build messages array with conversation history for context
     const messages = [
       {
         role: 'system',
         content: systemPrompt
-      },
-      {
-        role: 'user',
-        content: `INTERVIEWER QUESTION: "${question}"\n\nProvide a suggested answer for this interview question.`
       }
     ];
+
+    // Add conversation history for context (previous Q&A)
+    if (conversationHistory && conversationHistory.length > 0) {
+      conversationHistory.forEach(msg => {
+        messages.push({
+          role: msg.role,
+          content: msg.role === 'user' 
+            ? `INTERVIEWER QUESTION: "${msg.content}"`
+            : msg.content
+        });
+      });
+    }
+
+    // Add current question
+    messages.push({
+      role: 'user',
+      content: `INTERVIEWER QUESTION: "${question}"\n\nProvide a suggested answer for this interview question.${conversationHistory && conversationHistory.length > 0 ? ' Consider the context from our previous conversation if relevant.' : ''}`
+    });
 
     // Set headers for streaming
     res.setHeader('Content-Type', 'text/event-stream');

@@ -18,6 +18,7 @@ class InterviewAssistantApp {
     this.isGeneratingAnswer = false;
     this.answerHistory = [];
     this.currentStreamingAnswer = '';
+    this.conversationHistory = []; // Track Q&A for context
 
     // Interview context
     this.interviewContext = {
@@ -316,7 +317,8 @@ class InterviewAssistantApp {
         },
         body: JSON.stringify({
           question,
-          interviewContext: this.interviewContext
+          interviewContext: this.interviewContext,
+          conversationHistory: this.conversationHistory.slice(-10) // Last 10 exchanges for context
         })
       });
 
@@ -422,7 +424,22 @@ class InterviewAssistantApp {
       }
     }
 
-    // Add to history
+    // Add to conversation history for context in follow-up questions
+    this.conversationHistory.push({
+      role: 'user',
+      content: question
+    });
+    this.conversationHistory.push({
+      role: 'assistant', 
+      content: this.currentStreamingAnswer
+    });
+
+    // Keep only last 10 exchanges (20 messages)
+    if (this.conversationHistory.length > 20) {
+      this.conversationHistory = this.conversationHistory.slice(-20);
+    }
+
+    // Add to answer history for display
     this.answerHistory.unshift({
       question,
       answer: this.currentStreamingAnswer,
@@ -463,15 +480,38 @@ class InterviewAssistantApp {
   }
 
   formatAnswer(answer) {
-    // Convert markdown-like formatting to HTML
-    let formatted = this.escapeHtml(answer);
+    // First, extract and preserve code blocks
+    const codeBlocks = [];
+    let processed = answer;
+    
+    // Handle fenced code blocks with language (```javascript ... ```)
+    processed = processed.replace(/```(\w+)?\n([\s\S]*?)```/g, (match, lang, code) => {
+      const index = codeBlocks.length;
+      codeBlocks.push({ lang: lang || 'code', code: code.trim() });
+      return `__CODE_BLOCK_${index}__`;
+    });
+    
+    // Handle inline code (`code`)
+    processed = processed.replace(/`([^`]+)`/g, '<code class="inline-code">$1</code>');
+    
+    // Escape HTML for non-code content
+    let formatted = this.escapeHtml(processed);
+    
+    // Restore inline code tags that were escaped
+    formatted = formatted.replace(/&lt;code class=&quot;inline-code&quot;&gt;/g, '<code class="inline-code">');
+    formatted = formatted.replace(/&lt;\/code&gt;/g, '</code>');
     
     // Bold text
     formatted = formatted.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
     
+    // Numbered lists (1. 2. 3.)
+    formatted = formatted.replace(/^(\d+)\.\s+(.*)$/gm, '<li class="numbered">$2</li>');
+    
     // Bullet points
     formatted = formatted.replace(/^[•\-\*]\s+(.*)$/gm, '<li>$1</li>');
-    formatted = formatted.replace(/(<li>.*<\/li>)/gs, '<ul>$1</ul>');
+    
+    // Wrap consecutive list items
+    formatted = formatted.replace(/((?:<li[^>]*>.*<\/li>\s*)+)/g, '<ul>$1</ul>');
     
     // Line breaks
     formatted = formatted.replace(/\n\n/g, '</p><p>');
@@ -482,6 +522,22 @@ class InterviewAssistantApp {
     
     // Clean up nested p tags
     formatted = formatted.replace(/<p><\/p>/g, '');
+    
+    // Restore code blocks with proper formatting
+    codeBlocks.forEach((block, index) => {
+      const codeHtml = `
+        <div class="code-block">
+          <div class="code-header">
+            <span class="code-lang">${block.lang}</span>
+            <button class="copy-code-btn" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').textContent).then(() => { this.textContent = '✓ Copied!'; setTimeout(() => this.textContent = 'Copy', 2000); })">
+              Copy
+            </button>
+          </div>
+          <pre><code class="language-${block.lang}">${this.escapeHtml(block.code)}</code></pre>
+        </div>
+      `;
+      formatted = formatted.replace(`__CODE_BLOCK_${index}__`, codeHtml);
+    });
     
     return formatted;
   }
