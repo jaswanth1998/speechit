@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>SpeechIt - Real-time Speech to Text</title>
+  <title>InterviewAI - Your Real-time Interview Assistant</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
@@ -12,9 +12,45 @@
 <body>
   <div class="container">
     <header>
-      <h1>🎤 SpeechIt</h1>
-      <p class="subtitle">Real-time Speech to Text powered by ElevenLabs Scribe-v2</p>
+      <h1>🎯 InterviewAI</h1>
+      <p class="subtitle">Your Real-time Interview Assistant - Listen to questions, get instant answers</p>
     </header>
+
+    <!-- Interview Setup Panel -->
+    <div class="setup-panel">
+      <div class="setup-header">
+        <h2>📋 Interview Setup</h2>
+        <span class="setup-hint">Configure your interview context for better answers</span>
+      </div>
+      <div class="setup-fields">
+        <div class="field-group">
+          <label for="jobRole">Job Role:</label>
+          <input type="text" id="jobRole" placeholder="e.g., Senior Software Engineer, Product Manager">
+        </div>
+        <div class="field-group">
+          <label for="company">Company (optional):</label>
+          <input type="text" id="company" placeholder="e.g., Google, Amazon, Startup">
+        </div>
+        <div class="field-group">
+          <label for="techStack">Skills/Tech Stack:</label>
+          <input type="text" id="techStack" placeholder="e.g., React, Node.js, Python, AWS">
+        </div>
+        <div class="field-group">
+          <label for="experience">Experience Level:</label>
+          <select id="experience">
+            <option value="fresher">Fresher (0-1 years)</option>
+            <option value="junior">Junior (1-3 years)</option>
+            <option value="mid" selected>Mid-level (3-5 years)</option>
+            <option value="senior">Senior (5-8 years)</option>
+            <option value="lead">Lead/Principal (8+ years)</option>
+          </select>
+        </div>
+        <div class="field-group full-width">
+          <label for="resumeContext">Key Points from Resume (optional):</label>
+          <textarea id="resumeContext" rows="3" placeholder="Paste key achievements, projects, or points you want to highlight..."></textarea>
+        </div>
+      </div>
+    </div>
 
     <div class="controls">
       <div class="language-selector">
@@ -24,46 +60,29 @@
           <option value="es">Spanish</option>
           <option value="fr">French</option>
           <option value="de">German</option>
-          <option value="it">Italian</option>
-          <option value="pt">Portuguese</option>
-          <option value="nl">Dutch</option>
-          <option value="pl">Polish</option>
-          <option value="ru">Russian</option>
-          <option value="ja">Japanese</option>
-          <option value="zh">Chinese</option>
-          <option value="ko">Korean</option>
-          <option value="ar">Arabic</option>
           <option value="hi">Hindi</option>
-          <option value="tr">Turkish</option>
         </select>
       </div>
 
-      <div class="microphone-selector">
+      <div class="audio-source-selector">
+        <label for="audioSource">🔊 Audio Input:</label>
+        <select id="audioSource">
+          <option value="system" selected>System Audio (Interviewer)</option>
+          <option value="microphone">Microphone</option>
+          <option value="both">Both</option>
+        </select>
+      </div>
+
+      <div class="microphone-selector" id="microphoneContainer">
         <label for="microphone">🎤 Microphone:</label>
         <select id="microphone">
           <option value="">Loading devices...</option>
         </select>
       </div>
 
-      <div class="audio-source-selector">
-        <label for="audioSource">🔊 Source:</label>
-        <select id="audioSource">
-          <option value="microphone">Microphone</option>
-          <option value="system">System Audio</option>
-          <option value="both">Both (Mic + System)</option>
-        </select>
-      </div>
-
-      <div class="ai-toggle">
-        <label>
-          <input type="checkbox" id="aiResponseToggle">
-          <span>🤖 AI Auto-Reply</span>
-        </label>
-      </div>
-
       <button id="recordBtn" class="record-btn">
-        <span class="btn-icon">🎙️</span>
-        <span class="btn-text">Start Recording</span>
+        <span class="btn-icon">🎯</span>
+        <span class="btn-text">Start Interview Mode</span>
       </button>
 
       <div class="status-indicator">
@@ -76,45 +95,64 @@
       <canvas id="visualizer"></canvas>
     </div>
 
-    <div class="transcript-container">
-      <div class="transcript-header">
-        <h2>Transcript</h2>
-        <div class="transcript-actions">
-          <button id="copyBtn" class="action-btn" title="Copy to clipboard">📋 Copy</button>
-          <button id="clearBtn" class="action-btn" title="Clear transcript">🗑️ Clear</button>
+    <!-- Main Interview Panel - Two Column Layout -->
+    <div class="interview-panel">
+      <!-- Left: Interviewer Questions -->
+      <div class="question-container">
+        <div class="panel-header">
+          <h2>🎤 Interviewer Question</h2>
+          <div class="panel-actions">
+            <button id="clearTranscriptBtn" class="action-btn" title="Clear">🗑️</button>
+          </div>
+        </div>
+        <div id="transcript" class="transcript">
+          <p class="placeholder">Interviewer's questions will appear here...<br><small>📡 Listening for audio from your meeting</small></p>
+        </div>
+        <div id="partialText" class="partial-text"></div>
+      </div>
+
+      <!-- Right: AI Suggested Answers -->
+      <div class="answer-container">
+        <div class="panel-header">
+          <h2>💡 Suggested Answer</h2>
+          <div class="panel-actions">
+            <button id="copyAnswerBtn" class="action-btn" title="Copy Answer">📋</button>
+            <button id="regenerateBtn" class="action-btn" title="Regenerate (Ctrl+Enter)">🔄</button>
+            <button id="clearAnswerBtn" class="action-btn" title="Clear">🗑️</button>
+          </div>
+        </div>
+        <div id="answerPanel" class="answer-panel">
+          <p class="placeholder">Your suggested answers will appear here...<br><small>⌨️ Press Ctrl/Cmd+Enter to manually get answer</small></p>
+        </div>
+        <div class="answer-status">
+          <span id="answerStatus"></span>
         </div>
       </div>
-      <div id="transcript" class="transcript">
-        <p class="placeholder">Your transcription will appear here...</p>
-      </div>
-      <div id="partialText" class="partial-text"></div>
     </div>
 
-    <div id="aiResponseContainer" class="ai-response-container" style="display: none;">
-      <div class="ai-response-header">
-        <h2>🤖 AI Response</h2>
-        <div class="ai-header-actions">
-          <span class="keyboard-hint" title="Ctrl/Cmd+Enter: Get AI response | Ctrl/Cmd+K: Clear">⌨️ Shortcuts</span>
-          <button id="clearAiBtn" class="action-btn" title="Clear AI responses (Ctrl/Cmd+K)">🗑️ Clear</button>
-        </div>
-      </div>
-      <div id="aiResponses" class="ai-responses">
-        <p class="placeholder">AI responses will appear here...<br><small>Press Ctrl/Cmd+Enter to manually get AI response</small></p>
+    <!-- Quick Tips -->
+    <div class="tips-panel">
+      <h3>💡 Quick Tips</h3>
+      <div class="tips-grid">
+        <div class="tip">⌨️ <strong>Ctrl+Enter:</strong> Get answer for current question</div>
+        <div class="tip">🔊 <strong>System Audio:</strong> Captures interviewer from Google Meet/Zoom</div>
+        <div class="tip">📋 <strong>Setup:</strong> Fill in job details for personalized answers</div>
+        <div class="tip">🎯 <strong>Best Practice:</strong> Use answers as reference, speak naturally</div>
       </div>
     </div>
 
     <div class="stats">
       <div class="stat-item">
-        <span class="stat-label">Words</span>
-        <span id="wordCount" class="stat-value">0</span>
+        <span class="stat-label">Questions</span>
+        <span id="questionCount" class="stat-value">0</span>
       </div>
       <div class="stat-item">
         <span class="stat-label">Duration</span>
         <span id="duration" class="stat-value">00:00</span>
       </div>
       <div class="stat-item">
-        <span class="stat-label">Language</span>
-        <span id="detectedLang" class="stat-value">-</span>
+        <span class="stat-label">Status</span>
+        <span id="interviewStatus" class="stat-value">Ready</span>
       </div>
     </div>
   </div>

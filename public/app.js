@@ -1,4 +1,4 @@
-class SpeechItApp {
+class InterviewAssistantApp {
   constructor() {
     this.ws = null;
     this.mediaStream = null;
@@ -8,15 +8,25 @@ class SpeechItApp {
     this.isRecording = false;
     this.startTime = null;
     this.durationInterval = null;
-    this.fullTranscript = '';
+    this.currentQuestion = '';
     this.selectedMicrophoneId = null;
     this.audioDevices = [];
-    this.audioSource = 'microphone';
+    this.audioSource = 'system';
     this.systemAudioStream = null;
-    this.aiResponseEnabled = false;
-    this.conversationHistory = [];
-    this.lastTranscript = '';
+    this.questionCount = 0;
     this.questionDetectionTimeout = null;
+    this.isGeneratingAnswer = false;
+    this.answerHistory = [];
+    this.currentStreamingAnswer = '';
+
+    // Interview context
+    this.interviewContext = {
+      jobRole: '',
+      company: '',
+      techStack: '',
+      experience: 'mid',
+      resumeContext: ''
+    };
 
     // DOM elements
     this.recordBtn = document.getElementById('recordBtn');
@@ -27,29 +37,45 @@ class SpeechItApp {
     this.languageSelect = document.getElementById('language');
     this.microphoneSelect = document.getElementById('microphone');
     this.audioSourceSelect = document.getElementById('audioSource');
-    this.aiResponseToggle = document.getElementById('aiResponseToggle');
-    this.aiResponseContainer = document.getElementById('aiResponseContainer');
-    this.aiResponses = document.getElementById('aiResponses');
-    this.clearAiBtn = document.getElementById('clearAiBtn');
-    this.copyBtn = document.getElementById('copyBtn');
-    this.clearBtn = document.getElementById('clearBtn');
-    this.wordCount = document.getElementById('wordCount');
+    this.answerPanel = document.getElementById('answerPanel');
+    this.answerStatus = document.getElementById('answerStatus');
+    this.clearTranscriptBtn = document.getElementById('clearTranscriptBtn');
+    this.clearAnswerBtn = document.getElementById('clearAnswerBtn');
+    this.copyAnswerBtn = document.getElementById('copyAnswerBtn');
+    this.regenerateBtn = document.getElementById('regenerateBtn');
+    this.questionCountEl = document.getElementById('questionCount');
     this.duration = document.getElementById('duration');
-    this.detectedLang = document.getElementById('detectedLang');
+    this.interviewStatusEl = document.getElementById('interviewStatus');
     this.visualizer = document.getElementById('visualizer');
     this.canvasCtx = this.visualizer.getContext('2d');
+    this.microphoneContainer = document.getElementById('microphoneContainer');
+
+    // Setup fields
+    this.jobRoleInput = document.getElementById('jobRole');
+    this.companyInput = document.getElementById('company');
+    this.techStackInput = document.getElementById('techStack');
+    this.experienceSelect = document.getElementById('experience');
+    this.resumeContextInput = document.getElementById('resumeContext');
 
     this.init();
   }
 
   async init() {
+    // Main controls
     this.recordBtn.addEventListener('click', () => this.toggleRecording());
-    this.copyBtn.addEventListener('click', () => this.copyTranscript());
-    this.clearBtn.addEventListener('click', () => this.clearTranscript());
+    this.clearTranscriptBtn.addEventListener('click', () => this.clearQuestion());
+    this.clearAnswerBtn.addEventListener('click', () => this.clearAnswer());
+    this.copyAnswerBtn.addEventListener('click', () => this.copyAnswer());
+    this.regenerateBtn.addEventListener('click', () => this.regenerateAnswer());
     this.microphoneSelect.addEventListener('change', (e) => this.onMicrophoneChange(e));
     this.audioSourceSelect.addEventListener('change', (e) => this.onAudioSourceChange(e));
-    this.aiResponseToggle.addEventListener('change', (e) => this.onAiToggleChange(e));
-    this.clearAiBtn.addEventListener('click', () => this.clearAiResponses());
+    
+    // Setup fields listeners
+    this.jobRoleInput.addEventListener('input', () => this.updateInterviewContext());
+    this.companyInput.addEventListener('input', () => this.updateInterviewContext());
+    this.techStackInput.addEventListener('input', () => this.updateInterviewContext());
+    this.experienceSelect.addEventListener('change', () => this.updateInterviewContext());
+    this.resumeContextInput.addEventListener('input', () => this.updateInterviewContext());
     
     // Keyboard shortcuts
     document.addEventListener('keydown', (e) => this.handleKeyboardShortcuts(e));
@@ -57,12 +83,47 @@ class SpeechItApp {
     // Load available microphones
     await this.loadAudioDevices();
     
+    // Update audio source UI
+    this.onAudioSourceChange({ target: this.audioSourceSelect });
+    
     // Resize canvas
     this.resizeCanvas();
     window.addEventListener('resize', () => this.resizeCanvas());
     
     // Draw initial visualizer
     this.drawIdleVisualizer();
+
+    // Load saved context from localStorage
+    this.loadSavedContext();
+  }
+
+  updateInterviewContext() {
+    this.interviewContext = {
+      jobRole: this.jobRoleInput.value,
+      company: this.companyInput.value,
+      techStack: this.techStackInput.value,
+      experience: this.experienceSelect.value,
+      resumeContext: this.resumeContextInput.value
+    };
+    
+    // Save to localStorage
+    localStorage.setItem('interviewContext', JSON.stringify(this.interviewContext));
+  }
+
+  loadSavedContext() {
+    const saved = localStorage.getItem('interviewContext');
+    if (saved) {
+      try {
+        this.interviewContext = JSON.parse(saved);
+        this.jobRoleInput.value = this.interviewContext.jobRole || '';
+        this.companyInput.value = this.interviewContext.company || '';
+        this.techStackInput.value = this.interviewContext.techStack || '';
+        this.experienceSelect.value = this.interviewContext.experience || 'mid';
+        this.resumeContextInput.value = this.interviewContext.resumeContext || '';
+      } catch (e) {
+        console.log('Could not load saved context');
+      }
+    }
   }
 
   resizeCanvas() {
@@ -81,7 +142,6 @@ class SpeechItApp {
     this.canvasCtx.fillStyle = '#1e293b';
     this.canvasCtx.fillRect(0, 0, width, height);
     
-    // Draw a flat line
     this.canvasCtx.strokeStyle = '#334155';
     this.canvasCtx.lineWidth = 2;
     this.canvasCtx.beginPath();
@@ -115,7 +175,6 @@ class SpeechItApp {
 
       this.ws.onopen = () => {
         console.log('Connected to server');
-        // Send start message with selected language
         this.ws.send(JSON.stringify({
           type: 'start',
           language: this.languageSelect.value
@@ -142,7 +201,7 @@ class SpeechItApp {
 
     } catch (error) {
       console.error('Error starting recording:', error);
-      this.showToast('Could not access microphone. Please grant permission.');
+      this.showToast(error.message || 'Could not access audio. Please grant permission.');
     }
   }
 
@@ -158,6 +217,7 @@ class SpeechItApp {
         this.updateUI();
         this.startAudioProcessing();
         this.startDurationTimer();
+        this.interviewStatusEl.textContent = 'Listening...';
         break;
 
       case 'partial':
@@ -165,16 +225,13 @@ class SpeechItApp {
         break;
 
       case 'final':
-        this.addFinalText(data.text);
+        this.addQuestion(data.text);
         this.partialText.textContent = '';
         break;
 
       case 'final_with_timestamps':
-        this.addFinalText(data.text);
+        this.addQuestion(data.text);
         this.partialText.textContent = '';
-        if (data.language_code) {
-          this.detectedLang.textContent = data.language_code.toUpperCase();
-        }
         break;
 
       case 'error':
@@ -188,6 +245,247 @@ class SpeechItApp {
     }
   }
 
+  addQuestion(text) {
+    if (!text || !text.trim()) return;
+
+    // Remove placeholder if exists
+    const placeholder = this.transcript.querySelector('.placeholder');
+    if (placeholder) {
+      placeholder.remove();
+    }
+
+    // Append to current question
+    if (this.currentQuestion) {
+      this.currentQuestion += ' ' + text;
+    } else {
+      this.currentQuestion = text;
+    }
+
+    // Update display with highlighting
+    this.transcript.innerHTML = `<p class="question-text">${this.currentQuestion}</p>`;
+    this.transcript.scrollTop = this.transcript.scrollHeight;
+
+    // Detect question completion and auto-generate answer
+    this.detectQuestionComplete(text);
+  }
+
+  detectQuestionComplete(text) {
+    // Clear previous timeout
+    if (this.questionDetectionTimeout) {
+      clearTimeout(this.questionDetectionTimeout);
+    }
+
+    // Wait for pause in speech to consider question complete
+    this.questionDetectionTimeout = setTimeout(() => {
+      const question = this.currentQuestion.trim();
+      
+      // Check if it looks like a question or statement requiring response
+      const isQuestion = question.endsWith('?') || 
+                        /^(what|why|how|when|where|who|which|can|could|would|should|is|are|do|does|did|will|tell|describe|explain|walk|give)/i.test(question);
+      
+      if (isQuestion && question.split(' ').length >= 3 && !this.isGeneratingAnswer) {
+        this.questionCount++;
+        this.questionCountEl.textContent = this.questionCount;
+        
+        // Store the question and clear for next one
+        const questionToAnswer = question;
+        this.currentQuestion = ''; // Clear for next question
+        
+        this.getInterviewAnswer(questionToAnswer);
+      }
+    }, 2000); // Wait 2 seconds of silence
+  }
+
+  async getInterviewAnswer(question) {
+    if (this.isGeneratingAnswer) return;
+    
+    try {
+      this.isGeneratingAnswer = true;
+      this.currentStreamingAnswer = '';
+      this.answerStatus.textContent = '🤔 Generating answer...';
+      this.answerStatus.className = 'answer-status generating';
+      this.interviewStatusEl.textContent = 'Generating...';
+
+      // Create placeholder for streaming answer
+      this.createStreamingAnswerElement(question);
+
+      const response = await fetch('/api/chat', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          question,
+          interviewContext: this.interviewContext
+        })
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || `HTTP ${response.status}`);
+      }
+
+      // Handle streaming response
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        const chunk = decoder.decode(value);
+        const lines = chunk.split('\n');
+
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            const data = line.slice(6);
+            if (data === '[DONE]') {
+              // Streaming complete
+              this.finalizeStreamingAnswer(question);
+            } else {
+              try {
+                const parsed = JSON.parse(data);
+                if (parsed.content) {
+                  this.currentStreamingAnswer += parsed.content;
+                  this.updateStreamingAnswer();
+                }
+              } catch (e) {
+                // Ignore parse errors for incomplete JSON
+              }
+            }
+          }
+        }
+      }
+
+      this.answerStatus.textContent = '✅ Answer ready - Use as reference';
+      this.answerStatus.className = 'answer-status ready';
+      this.interviewStatusEl.textContent = 'Listening...';
+
+    } catch (error) {
+      console.error('Error getting answer:', error);
+      this.answerStatus.textContent = `❌ Error: ${error.message}`;
+      this.answerStatus.className = 'answer-status error';
+      this.showToast(`Failed to get answer: ${error.message}`);
+    } finally {
+      this.isGeneratingAnswer = false;
+    }
+  }
+
+  createStreamingAnswerElement(question) {
+    // Add new answer card at the top
+    const answerCard = document.createElement('div');
+    answerCard.className = 'answer-card streaming';
+    answerCard.id = 'current-streaming-answer';
+    answerCard.innerHTML = `
+      <div class="answer-card-header">
+        <span class="answer-number">#${this.questionCount}</span>
+        <span class="answer-time">${new Date().toLocaleTimeString()}</span>
+      </div>
+      <div class="answer-question"><strong>Q:</strong> ${this.escapeHtml(question)}</div>
+      <div class="answer-text streaming-text"><span class="typing-cursor"></span></div>
+    `;
+
+    // Remove placeholder if exists
+    const placeholder = this.answerPanel.querySelector('.placeholder');
+    if (placeholder) {
+      placeholder.remove();
+    }
+
+    // Insert at the beginning
+    this.answerPanel.insertBefore(answerCard, this.answerPanel.firstChild);
+  }
+
+  updateStreamingAnswer() {
+    const streamingText = document.querySelector('#current-streaming-answer .streaming-text');
+    if (streamingText) {
+      const formattedAnswer = this.formatAnswer(this.currentStreamingAnswer);
+      streamingText.innerHTML = formattedAnswer + '<span class="typing-cursor"></span>';
+      
+      // Auto-scroll to show latest content
+      const answerCard = document.getElementById('current-streaming-answer');
+      if (answerCard) {
+        answerCard.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      }
+    }
+  }
+
+  finalizeStreamingAnswer(question) {
+    const answerCard = document.getElementById('current-streaming-answer');
+    if (answerCard) {
+      answerCard.classList.remove('streaming');
+      answerCard.id = '';
+      
+      const streamingText = answerCard.querySelector('.streaming-text');
+      if (streamingText) {
+        streamingText.classList.remove('streaming-text');
+        streamingText.innerHTML = this.formatAnswer(this.currentStreamingAnswer);
+      }
+    }
+
+    // Add to history
+    this.answerHistory.unshift({
+      question,
+      answer: this.currentStreamingAnswer,
+      time: new Date().toLocaleTimeString(),
+      number: this.questionCount
+    });
+
+    // Keep only last 20 answers
+    if (this.answerHistory.length > 20) {
+      this.answerHistory.pop();
+    }
+  }
+
+  displayAnswer(question, answer) {
+    // Legacy method - now handled by streaming
+    // Keeping for manual regeneration
+    const formattedAnswer = this.formatAnswer(answer);
+    
+    const answerCard = document.createElement('div');
+    answerCard.className = 'answer-card';
+    answerCard.innerHTML = `
+      <div class="answer-card-header">
+        <span class="answer-number">#${this.questionCount}</span>
+        <span class="answer-time">${new Date().toLocaleTimeString()}</span>
+      </div>
+      <div class="answer-question"><strong>Q:</strong> ${this.escapeHtml(question)}</div>
+      <div class="answer-text">${formattedAnswer}</div>
+    `;
+
+    // Remove placeholder if exists
+    const placeholder = this.answerPanel.querySelector('.placeholder');
+    if (placeholder) {
+      placeholder.remove();
+    }
+
+    // Insert at the beginning
+    this.answerPanel.insertBefore(answerCard, this.answerPanel.firstChild);
+  }
+
+  formatAnswer(answer) {
+    // Convert markdown-like formatting to HTML
+    let formatted = this.escapeHtml(answer);
+    
+    // Bold text
+    formatted = formatted.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+    
+    // Bullet points
+    formatted = formatted.replace(/^[•\-\*]\s+(.*)$/gm, '<li>$1</li>');
+    formatted = formatted.replace(/(<li>.*<\/li>)/gs, '<ul>$1</ul>');
+    
+    // Line breaks
+    formatted = formatted.replace(/\n\n/g, '</p><p>');
+    formatted = formatted.replace(/\n/g, '<br>');
+    
+    // Wrap in paragraph
+    formatted = `<p>${formatted}</p>`;
+    
+    // Clean up nested p tags
+    formatted = formatted.replace(/<p><\/p>/g, '');
+    
+    return formatted;
+  }
+
   startAudioProcessing() {
     this.audioContext = new (window.AudioContext || window.webkitAudioContext)({
       sampleRate: 16000
@@ -195,12 +493,10 @@ class SpeechItApp {
 
     const source = this.audioContext.createMediaStreamSource(this.mediaStream);
     
-    // Create analyser for visualization
     this.analyser = this.audioContext.createAnalyser();
     this.analyser.fftSize = 256;
     source.connect(this.analyser);
 
-    // Create script processor for sending audio
     const bufferSize = 4096;
     this.processor = this.audioContext.createScriptProcessor(bufferSize, 1, 1);
 
@@ -214,17 +510,14 @@ class SpeechItApp {
 
       const inputData = event.inputBuffer.getChannelData(0);
       
-      // Convert float32 to int16
       const pcmData = new Int16Array(inputData.length);
       for (let i = 0; i < inputData.length; i++) {
         const s = Math.max(-1, Math.min(1, inputData[i]));
         pcmData[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
       }
 
-      // Convert to base64
       const base64Audio = this.arrayBufferToBase64(pcmData.buffer);
 
-      // Send audio chunk to server
       this.ws.send(JSON.stringify({
         type: 'audio',
         audio: base64Audio,
@@ -232,7 +525,6 @@ class SpeechItApp {
       }));
     };
 
-    // Start visualization
     this.drawVisualizer();
   }
 
@@ -269,10 +561,9 @@ class SpeechItApp {
     for (let i = 0; i < bufferLength; i++) {
       const barHeight = (dataArray[i] / 255) * height * 0.8;
       
-      // Gradient color based on height
       const gradient = this.canvasCtx.createLinearGradient(0, height, 0, 0);
-      gradient.addColorStop(0, '#6366f1');
-      gradient.addColorStop(1, '#818cf8');
+      gradient.addColorStop(0, '#22c55e');
+      gradient.addColorStop(1, '#4ade80');
       
       this.canvasCtx.fillStyle = gradient;
       this.canvasCtx.fillRect(x, height - barHeight, barWidth - 1, barHeight);
@@ -284,7 +575,6 @@ class SpeechItApp {
   stopRecording() {
     this.isRecording = false;
 
-    // Stop audio processing
     if (this.processor) {
       this.processor.disconnect();
       this.processor = null;
@@ -295,26 +585,22 @@ class SpeechItApp {
       this.audioContext = null;
     }
 
-    // Stop media stream
     if (this.mediaStream) {
       this.mediaStream.getTracks().forEach(track => track.stop());
       this.mediaStream = null;
     }
 
-    // Stop system audio stream
     if (this.systemAudioStream) {
       this.systemAudioStream.getTracks().forEach(track => track.stop());
       this.systemAudioStream = null;
     }
 
-    // Close WebSocket
     if (this.ws) {
       this.ws.send(JSON.stringify({ type: 'stop' }));
       this.ws.close();
       this.ws = null;
     }
 
-    // Stop duration timer
     if (this.durationInterval) {
       clearInterval(this.durationInterval);
       this.durationInterval = null;
@@ -323,24 +609,25 @@ class SpeechItApp {
     this.updateUI();
     this.drawIdleVisualizer();
     this.updateStatus('Ready', '');
+    this.interviewStatusEl.textContent = 'Stopped';
   }
 
   updateUI() {
     if (this.isRecording) {
       this.recordBtn.classList.add('recording');
-      this.recordBtn.querySelector('.btn-text').textContent = 'Stop Recording';
+      this.recordBtn.querySelector('.btn-text').textContent = 'Stop Interview';
       this.statusDot.classList.add('recording');
-      this.updateStatus('Recording...', 'recording');
+      this.updateStatus('Interview Mode Active', 'recording');
       this.languageSelect.disabled = true;
-      this.microphoneSelect.disabled = true;
       this.audioSourceSelect.disabled = true;
+      this.microphoneSelect.disabled = true;
     } else {
       this.recordBtn.classList.remove('recording');
-      this.recordBtn.querySelector('.btn-text').textContent = 'Start Recording';
+      this.recordBtn.querySelector('.btn-text').textContent = 'Start Interview Mode';
       this.statusDot.classList.remove('recording', 'connected');
       this.languageSelect.disabled = false;
-      this.microphoneSelect.disabled = false;
       this.audioSourceSelect.disabled = false;
+      this.microphoneSelect.disabled = false;
     }
   }
 
@@ -349,36 +636,6 @@ class SpeechItApp {
     this.statusDot.className = 'status-dot';
     if (className) {
       this.statusDot.classList.add(className);
-    }
-  }
-
-  addFinalText(text) {
-    // Remove placeholder if exists
-    const placeholder = this.transcript.querySelector('.placeholder');
-    if (placeholder) {
-      placeholder.remove();
-    }
-
-    // Add text to full transcript
-    if (this.fullTranscript) {
-      this.fullTranscript += ' ' + text;
-    } else {
-      this.fullTranscript = text;
-    }
-
-    // Update display
-    this.transcript.innerHTML = `<p class="final-text">${this.fullTranscript}</p>`;
-    
-    // Update word count
-    const words = this.fullTranscript.trim().split(/\s+/).filter(w => w.length > 0);
-    this.wordCount.textContent = words.length;
-
-    // Scroll to bottom
-    this.transcript.scrollTop = this.transcript.scrollHeight;
-
-    // Check if AI response is enabled and detect questions
-    if (this.aiResponseEnabled && text.trim()) {
-      this.detectAndRespondToQuestion(text);
     }
   }
 
@@ -393,58 +650,49 @@ class SpeechItApp {
     }, 1000);
   }
 
-  copyTranscript() {
-    if (this.fullTranscript) {
-      navigator.clipboard.writeText(this.fullTranscript).then(() => {
-        this.showToast('Transcript copied to clipboard!');
+  clearQuestion() {
+    this.currentQuestion = '';
+    this.transcript.innerHTML = '<p class="placeholder">Interviewer\'s questions will appear here...<br><small>📡 Listening for audio from your meeting</small></p>';
+    this.partialText.textContent = '';
+    this.showToast('Question cleared');
+  }
+
+  clearAnswer() {
+    this.answerPanel.innerHTML = '<p class="placeholder">Your suggested answers will appear here...<br><small>⌨️ Press Ctrl/Cmd+Enter to manually get answer</small></p>';
+    this.answerStatus.textContent = '';
+    this.showToast('Answer cleared');
+  }
+
+  copyAnswer() {
+    const answerText = this.answerPanel.querySelector('.answer-text');
+    if (answerText) {
+      const text = answerText.innerText;
+      navigator.clipboard.writeText(text).then(() => {
+        this.showToast('Answer copied to clipboard!');
       }).catch(() => {
-        this.showToast('Failed to copy transcript');
+        this.showToast('Failed to copy');
       });
     } else {
-      this.showToast('Nothing to copy');
+      this.showToast('No answer to copy');
     }
   }
 
-  clearTranscript() {
-    this.fullTranscript = '';
-    this.transcript.innerHTML = '<p class="placeholder">Your transcription will appear here...</p>';
-    this.partialText.textContent = '';
-    this.wordCount.textContent = '0';
-    this.duration.textContent = '00:00';
-    this.detectedLang.textContent = '-';
-    this.showToast('Transcript cleared');
-  }
-
-  showToast(message) {
-    // Remove existing toast
-    const existingToast = document.querySelector('.toast');
-    if (existingToast) {
-      existingToast.remove();
+  regenerateAnswer() {
+    if (!this.currentQuestion.trim()) {
+      this.showToast('No question to regenerate answer for');
+      return;
     }
-
-    // Create and show new toast
-    const toast = document.createElement('div');
-    toast.className = 'toast';
-    toast.textContent = message;
-    document.body.appendChild(toast);
-
-    // Remove after 3 seconds
-    setTimeout(() => {
-      toast.remove();
-    }, 3000);
+    this.getInterviewAnswer(this.currentQuestion.trim());
   }
 
   async loadAudioDevices() {
     try {
-      // Request permission first
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       stream.getTracks().forEach(track => track.stop());
       
-      // Get all audio input devices
       const devices = await navigator.mediaDevices.enumerateDevices();
       this.audioDevices = devices.filter(device => device.kind === 'audioinput');
       
-      // Populate the dropdown
       this.microphoneSelect.innerHTML = '';
       
       if (this.audioDevices.length === 0) {
@@ -459,12 +707,10 @@ class SpeechItApp {
         this.microphoneSelect.appendChild(option);
       });
       
-      // Set the first device as default
       if (this.audioDevices.length > 0) {
         this.selectedMicrophoneId = this.audioDevices[0].deviceId;
       }
       
-      // Listen for device changes
       navigator.mediaDevices.addEventListener('devicechange', () => {
         this.loadAudioDevices();
       });
@@ -477,36 +723,16 @@ class SpeechItApp {
 
   onMicrophoneChange(event) {
     this.selectedMicrophoneId = event.target.value;
-    console.log('Selected microphone:', this.selectedMicrophoneId);
-    
-    // If currently recording, stop and restart with the new microphone
-    if (this.isRecording) {
-      this.showToast('Switching microphone...');
-      this.stopRecording();
-      setTimeout(() => {
-        this.startRecording();
-      }, 500);
-    }
   }
 
   onAudioSourceChange(event) {
     this.audioSource = event.target.value;
-    console.log('Selected audio source:', this.audioSource);
     
-    // Update UI based on source
-    if (this.audioSource === 'system' || this.audioSource === 'both') {
-      this.microphoneSelect.disabled = this.audioSource === 'system';
+    // Show/hide microphone selector
+    if (this.audioSource === 'system') {
+      this.microphoneContainer.style.display = 'none';
     } else {
-      this.microphoneSelect.disabled = false;
-    }
-    
-    // If currently recording, stop and restart with the new source
-    if (this.isRecording) {
-      this.showToast('Switching audio source...');
-      this.stopRecording();
-      setTimeout(() => {
-        this.startRecording();
-      }, 500);
+      this.microphoneContainer.style.display = 'flex';
     }
   }
 
@@ -529,9 +755,8 @@ class SpeechItApp {
 
   async captureSystemAudio() {
     try {
-      // Use getDisplayMedia to capture tab/window audio
       this.mediaStream = await navigator.mediaDevices.getDisplayMedia({
-        video: true, // Required for getDisplayMedia
+        video: true,
         audio: {
           echoCancellation: true,
           noiseSuppression: true,
@@ -539,28 +764,25 @@ class SpeechItApp {
         }
       });
 
-      // Stop the video track immediately (we only want audio)
       const videoTrack = this.mediaStream.getVideoTracks()[0];
       if (videoTrack) {
         videoTrack.stop();
         this.mediaStream.removeTrack(videoTrack);
       }
 
-      // Check if audio was captured
       const audioTracks = this.mediaStream.getAudioTracks();
       if (audioTracks.length === 0) {
-        throw new Error('No audio track in the selected source. Please select a tab/window with audio.');
+        throw new Error('No audio track. Make sure to check "Share audio" when selecting the tab/window.');
       }
 
     } catch (error) {
       console.error('Error capturing system audio:', error);
-      throw new Error('Could not capture system audio. Make sure to select "Share audio" when choosing a tab/window.');
+      throw new Error('Could not capture system audio. Select a tab and check "Share audio".');
     }
   }
 
   async captureBothAudio() {
     try {
-      // Capture microphone
       const audioConstraints = {
         sampleRate: 16000,
         channelCount: 1,
@@ -576,7 +798,6 @@ class SpeechItApp {
         audio: audioConstraints
       });
 
-      // Capture system audio
       this.systemAudioStream = await navigator.mediaDevices.getDisplayMedia({
         video: true,
         audio: {
@@ -586,14 +807,12 @@ class SpeechItApp {
         }
       });
 
-      // Stop the video track
       const videoTrack = this.systemAudioStream.getVideoTracks()[0];
       if (videoTrack) {
         videoTrack.stop();
         this.systemAudioStream.removeTrack(videoTrack);
       }
 
-      // Check if system audio was captured
       const systemAudioTracks = this.systemAudioStream.getAudioTracks();
       if (systemAudioTracks.length === 0) {
         this.systemAudioStream.getTracks().forEach(track => track.stop());
@@ -603,136 +822,63 @@ class SpeechItApp {
         return;
       }
 
-      // Create audio context to mix both streams
       const audioContext = new AudioContext({ sampleRate: 16000 });
       const destination = audioContext.createMediaStreamDestination();
 
-      // Connect microphone
       const micSource = audioContext.createMediaStreamSource(micStream);
       const micGain = audioContext.createGain();
       micGain.gain.value = 1.0;
       micSource.connect(micGain);
       micGain.connect(destination);
 
-      // Connect system audio
       const systemSource = audioContext.createMediaStreamSource(this.systemAudioStream);
       const systemGain = audioContext.createGain();
       systemGain.gain.value = 1.0;
       systemSource.connect(systemGain);
       systemGain.connect(destination);
 
-      // Use the mixed stream
       this.mediaStream = destination.stream;
 
     } catch (error) {
       console.error('Error capturing both audio sources:', error);
-      throw new Error('Could not capture both audio sources. Make sure to grant all permissions.');
+      throw new Error('Could not capture audio. Make sure to grant all permissions.');
     }
   }
 
-  onAiToggleChange(event) {
-    this.aiResponseEnabled = event.target.checked;
+  handleKeyboardShortcuts(event) {
+    // Ctrl/Cmd + Enter: Manual answer generation
+    if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {
+      event.preventDefault();
+      this.regenerateAnswer();
+    }
     
-    if (this.aiResponseEnabled) {
-      this.aiResponseContainer.style.display = 'block';
-      this.showToast('AI Auto-Reply enabled');
-    } else {
-      this.aiResponseContainer.style.display = 'none';
-      this.showToast('AI Auto-Reply disabled');
+    // Ctrl/Cmd + K: Clear answer
+    if ((event.ctrlKey || event.metaKey) && event.key === 'k') {
+      event.preventDefault();
+      this.clearAnswer();
     }
-  }
-
-  detectAndRespondToQuestion(text) {
-    // Clear previous timeout
-    if (this.questionDetectionTimeout) {
-      clearTimeout(this.questionDetectionTimeout);
-    }
-
-    // Wait a bit to see if more text comes in
-    this.questionDetectionTimeout = setTimeout(() => {
-      const trimmedText = text.trim();
-      
-      // Check if the text is a question
-      const isQuestion = trimmedText.endsWith('?') || 
-                        /^(what|why|how|when|where|who|which|can|could|would|should|is|are|do|does|did|will)/i.test(trimmedText);
-      
-      if (isQuestion) {
-        this.getAiResponse(trimmedText);
-      }
-    }, 1500); // Wait 1.5 seconds after the last transcript
-  }
-
-  async getAiResponse(question) {
-    try {
-      this.showToast('Getting AI response...');
-      
-      const response = await fetch('/api/chat', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          question,
-          conversationHistory: this.conversationHistory
-        })
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.error || `HTTP ${response.status}: Failed to get AI response`);
-      }
-
-      const data = await response.json();
-      
-      if (!data.answer) {
-        throw new Error('No answer received from AI');
-      }
-      
-      this.displayAiResponse(question, data.answer);
-      
-      // Update conversation history
-      this.conversationHistory.push(
-        { role: 'user', content: question },
-        { role: 'assistant', content: data.answer }
-      );
-      
-      // Keep only last 10 messages to avoid token limits
-      if (this.conversationHistory.length > 20) {
-        this.conversationHistory = this.conversationHistory.slice(-20);
-      }
-
-    } catch (error) {
-      console.error('Error getting AI response:', error);
-      this.showToast(`AI Error: ${error.message}`);
-    }
-  }
-
-  displayAiResponse(question, answer) {
-    // Remove placeholder
-    const placeholder = this.aiResponses.querySelector('.placeholder');
-    if (placeholder) {
-      placeholder.remove();
-    }
-
-    // Create response element
-    const responseEl = document.createElement('div');
-    responseEl.className = 'ai-response-item';
-    responseEl.innerHTML = `
-      <div class="ai-question"><strong>Q:</strong> ${this.escapeHtml(question)}</div>
-      <div class="ai-answer"><strong>A:</strong> ${this.escapeHtml(answer)}</div>
-      <div class="ai-timestamp">${new Date().toLocaleTimeString()}</div>
-    `;
-
-    this.aiResponses.appendChild(responseEl);
     
-    // Scroll to bottom
-    this.aiResponses.scrollTop = this.aiResponses.scrollHeight;
+    // Ctrl/Cmd + Shift + C: Copy answer
+    if ((event.ctrlKey || event.metaKey) && event.shiftKey && event.key === 'C') {
+      event.preventDefault();
+      this.copyAnswer();
+    }
   }
 
-  clearAiResponses() {
-    this.aiResponses.innerHTML = '<p class="placeholder">AI responses will appear here...</p>';
-    this.conversationHistory = [];
-    this.showToast('AI responses cleared');
+  showToast(message) {
+    const existingToast = document.querySelector('.toast');
+    if (existingToast) {
+      existingToast.remove();
+    }
+
+    const toast = document.createElement('div');
+    toast.className = 'toast';
+    toast.textContent = message;
+    document.body.appendChild(toast);
+
+    setTimeout(() => {
+      toast.remove();
+    }, 3000);
   }
 
   escapeHtml(text) {
@@ -740,56 +886,9 @@ class SpeechItApp {
     div.textContent = text;
     return div.innerHTML;
   }
-
-  handleKeyboardShortcuts(event) {
-    // Ctrl/Cmd + Enter: Manually get AI response for current transcript
-    if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {
-      event.preventDefault();
-      this.manualAiResponse();
-    }
-    
-    // Ctrl/Cmd + K: Clear AI responses
-    if ((event.ctrlKey || event.metaKey) && event.key === 'k') {
-      event.preventDefault();
-      if (this.aiResponseEnabled) {
-        this.clearAiResponses();
-      }
-    }
-    
-    // Ctrl/Cmd + Shift + A: Toggle AI auto-reply
-    if ((event.ctrlKey || event.metaKey) && event.shiftKey && event.key === 'A') {
-      event.preventDefault();
-      this.aiResponseToggle.checked = !this.aiResponseToggle.checked;
-      this.onAiToggleChange({ target: this.aiResponseToggle });
-    }
-  }
-
-  manualAiResponse() {
-    if (!this.fullTranscript || !this.fullTranscript.trim()) {
-      this.showToast('No transcript available. Please record some audio first.');
-      return;
-    }
-
-    // Get the last sentence or the full transcript
-    const sentences = this.fullTranscript.trim().split(/[.!?]+/).filter(s => s.trim());
-    const lastSentence = sentences[sentences.length - 1].trim();
-    
-    if (!lastSentence) {
-      this.showToast('No valid text to send to AI.');
-      return;
-    }
-
-    // Show AI container if not visible
-    if (!this.aiResponseEnabled) {
-      this.aiResponseContainer.style.display = 'block';
-    }
-
-    this.showToast(`Sending to AI: "${lastSentence.substring(0, 50)}${lastSentence.length > 50 ? '...' : ''}"`);
-    this.getAiResponse(lastSentence);
-  }
 }
 
 // Initialize app when DOM is loaded
 document.addEventListener('DOMContentLoaded', () => {
-  new SpeechItApp();
+  new InterviewAssistantApp();
 });

@@ -33,36 +33,78 @@ app.get('/api/health', (req, res) => {
   });
 });
 
-// ChatGPT response endpoint
+// ChatGPT response endpoint with streaming
 app.post('/api/chat', async (req, res) => {
   try {
-    const { question, conversationHistory } = req.body;
+    const { question, interviewContext } = req.body;
     
     if (!OPENAI_API_KEY) {
       return res.status(500).json({ error: 'OpenAI API key not configured' });
     }
 
+    // Build interview context
+    const contextParts = [];
+    if (interviewContext) {
+      if (interviewContext.jobRole) contextParts.push(`Job Role: ${interviewContext.jobRole}`);
+      if (interviewContext.company) contextParts.push(`Company: ${interviewContext.company}`);
+      if (interviewContext.techStack) contextParts.push(`Skills/Tech Stack: ${interviewContext.techStack}`);
+      if (interviewContext.experience) contextParts.push(`Experience Level: ${interviewContext.experience}`);
+      if (interviewContext.resumeContext) contextParts.push(`Key Resume Points: ${interviewContext.resumeContext}`);
+    }
+
+    const systemPrompt = `You are an expert interview coach helping a candidate in a real-time interview. Your role is to provide suggested answers that the candidate can use or adapt.
+
+${contextParts.length > 0 ? `CANDIDATE CONTEXT:\n${contextParts.join('\n')}\n` : ''}
+GUIDELINES:
+1. Provide clear, structured, and professional answers
+2. Use the STAR method (Situation, Task, Action, Result) for behavioral questions
+3. For technical questions, be accurate and include relevant examples
+4. Keep answers concise but comprehensive (aim for 30-60 seconds speaking time)
+5. Include specific examples and metrics when possible
+6. Tailor responses to the candidate's experience level and role
+7. Format the answer in an easy-to-read way with bullet points when helpful
+8. If the question is unclear, provide the most likely interpretation and answer
+
+IMPORTANT: The candidate will read your answer while speaking, so:
+- Use natural, conversational language
+- Add brief pauses indicated by "..." for natural speech rhythm
+- Highlight KEY POINTS in bold
+- Keep sentences short and easy to speak`;
+
     const messages = [
       {
         role: 'system',
-        content: 'You are a helpful AI assistant. Provide clear, concise, and informative answers to questions. Keep responses brief but complete.'
+        content: systemPrompt
       },
-      ...(conversationHistory || []),
       {
         role: 'user',
-        content: question
+        content: `INTERVIEWER QUESTION: "${question}"\n\nProvide a suggested answer for this interview question.`
       }
     ];
 
-    const completion = await openai.chat.completions.create({
+    // Set headers for streaming
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+
+    // Use streaming API
+    const stream = await openai.chat.completions.create({
       model: 'gpt-4',
       messages: messages,
-      max_tokens: 500,
-      temperature: 0.7
+      max_tokens: 800,
+      temperature: 0.7,
+      stream: true
     });
 
-    const answer = completion.choices[0].message.content;
-    res.json({ answer });
+    for await (const chunk of stream) {
+      const content = chunk.choices[0]?.delta?.content || '';
+      if (content) {
+        res.write(`data: ${JSON.stringify({ content })}\n\n`);
+      }
+    }
+
+    res.write('data: [DONE]\n\n');
+    res.end();
 
   } catch (error) {
     console.error('ChatGPT API error:', error);
