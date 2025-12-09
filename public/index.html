@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SpeechIt - Real-time Speech to Text</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>🎤 SpeechIt</h1>
+      <p class="subtitle">Real-time Speech to Text powered by ElevenLabs Scribe-v2</p>
+    </header>
+
+    <div class="controls">
+      <div class="language-selector">
+        <label for="language">Language:</label>
+        <select id="language">
+          <option value="en">English</option>
+          <option value="es">Spanish</option>
+          <option value="fr">French</option>
+          <option value="de">German</option>
+          <option value="it">Italian</option>
+          <option value="pt">Portuguese</option>
+          <option value="nl">Dutch</option>
+          <option value="pl">Polish</option>
+          <option value="ru">Russian</option>
+          <option value="ja">Japanese</option>
+          <option value="zh">Chinese</option>
+          <option value="ko">Korean</option>
+          <option value="ar">Arabic</option>
+          <option value="hi">Hindi</option>
+          <option value="tr">Turkish</option>
+        </select>
+      </div>
+
+      <div class="microphone-selector">
+        <label for="microphone">🎤 Microphone:</label>
+        <select id="microphone">
+          <option value="">Loading devices...</option>
+        </select>
+      </div>
+
+      <button id="recordBtn" class="record-btn">
+        <span class="btn-icon">🎙️</span>
+        <span class="btn-text">Start Recording</span>
+      </button>
+
+      <div class="status-indicator">
+        <span id="statusDot" class="status-dot"></span>
+        <span id="statusText" class="status-text">Ready</span>
+      </div>
+    </div>
+
+    <div class="visualizer-container">
+      <canvas id="visualizer"></canvas>
+    </div>
+
+    <div class="transcript-container">
+      <div class="transcript-header">
+        <h2>Transcript</h2>
+        <div class="transcript-actions">
+          <button id="copyBtn" class="action-btn" title="Copy to clipboard">📋 Copy</button>
+          <button id="clearBtn" class="action-btn" title="Clear transcript">🗑️ Clear</button>
+        </div>
+      </div>
+      <div id="transcript" class="transcript">
+        <p class="placeholder">Your transcription will appear here...</p>
+      </div>
+      <div id="partialText" class="partial-text"></div>
+    </div>
+
+    <div class="stats">
+      <div class="stat-item">
+        <span class="stat-label">Words</span>
+        <span id="wordCount" class="stat-value">0</span>
+      </div>
+      <div class="stat-item">
+        <span class="stat-label">Duration</span>
+        <span id="duration" class="stat-value">00:00</span>
+      </div>
+      <div class="stat-item">
+        <span class="stat-label">Language</span>
+        <span id="detectedLang" class="stat-value">-</span>
+      </div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
