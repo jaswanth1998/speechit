@@ -11,6 +11,12 @@ class SpeechItApp {
     this.fullTranscript = '';
     this.selectedMicrophoneId = null;
     this.audioDevices = [];
+    this.audioSource = 'microphone';
+    this.systemAudioStream = null;
+    this.aiResponseEnabled = false;
+    this.conversationHistory = [];
+    this.lastTranscript = '';
+    this.questionDetectionTimeout = null;
 
     // DOM elements
     this.recordBtn = document.getElementById('recordBtn');
@@ -20,6 +26,11 @@ class SpeechItApp {
     this.partialText = document.getElementById('partialText');
     this.languageSelect = document.getElementById('language');
     this.microphoneSelect = document.getElementById('microphone');
+    this.audioSourceSelect = document.getElementById('audioSource');
+    this.aiResponseToggle = document.getElementById('aiResponseToggle');
+    this.aiResponseContainer = document.getElementById('aiResponseContainer');
+    this.aiResponses = document.getElementById('aiResponses');
+    this.clearAiBtn = document.getElementById('clearAiBtn');
     this.copyBtn = document.getElementById('copyBtn');
     this.clearBtn = document.getElementById('clearBtn');
     this.wordCount = document.getElementById('wordCount');
@@ -36,6 +47,12 @@ class SpeechItApp {
     this.copyBtn.addEventListener('click', () => this.copyTranscript());
     this.clearBtn.addEventListener('click', () => this.clearTranscript());
     this.microphoneSelect.addEventListener('change', (e) => this.onMicrophoneChange(e));
+    this.audioSourceSelect.addEventListener('change', (e) => this.onAudioSourceChange(e));
+    this.aiResponseToggle.addEventListener('change', (e) => this.onAiToggleChange(e));
+    this.clearAiBtn.addEventListener('click', () => this.clearAiResponses());
+    
+    // Keyboard shortcuts
+    document.addEventListener('keydown', (e) => this.handleKeyboardShortcuts(e));
     
     // Load available microphones
     await this.loadAudioDevices();
@@ -83,22 +100,14 @@ class SpeechItApp {
 
   async startRecording() {
     try {
-      // Request microphone access with selected device
-      const audioConstraints = {
-        sampleRate: 16000,
-        channelCount: 1,
-        echoCancellation: true,
-        noiseSuppression: true
-      };
-      
-      // If a specific microphone is selected, use it
-      if (this.selectedMicrophoneId) {
-        audioConstraints.deviceId = { exact: this.selectedMicrophoneId };
+      // Get audio stream based on selected source
+      if (this.audioSource === 'system') {
+        await this.captureSystemAudio();
+      } else if (this.audioSource === 'both') {
+        await this.captureBothAudio();
+      } else {
+        await this.captureMicrophoneAudio();
       }
-      
-      this.mediaStream = await navigator.mediaDevices.getUserMedia({
-        audio: audioConstraints
-      });
 
       // Connect to WebSocket server
       const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -292,6 +301,12 @@ class SpeechItApp {
       this.mediaStream = null;
     }
 
+    // Stop system audio stream
+    if (this.systemAudioStream) {
+      this.systemAudioStream.getTracks().forEach(track => track.stop());
+      this.systemAudioStream = null;
+    }
+
     // Close WebSocket
     if (this.ws) {
       this.ws.send(JSON.stringify({ type: 'stop' }));
@@ -318,12 +333,14 @@ class SpeechItApp {
       this.updateStatus('Recording...', 'recording');
       this.languageSelect.disabled = true;
       this.microphoneSelect.disabled = true;
+      this.audioSourceSelect.disabled = true;
     } else {
       this.recordBtn.classList.remove('recording');
       this.recordBtn.querySelector('.btn-text').textContent = 'Start Recording';
       this.statusDot.classList.remove('recording', 'connected');
       this.languageSelect.disabled = false;
       this.microphoneSelect.disabled = false;
+      this.audioSourceSelect.disabled = false;
     }
   }
 
@@ -358,6 +375,11 @@ class SpeechItApp {
 
     // Scroll to bottom
     this.transcript.scrollTop = this.transcript.scrollHeight;
+
+    // Check if AI response is enabled and detect questions
+    if (this.aiResponseEnabled && text.trim()) {
+      this.detectAndRespondToQuestion(text);
+    }
   }
 
   startDurationTimer() {
@@ -465,6 +487,305 @@ class SpeechItApp {
         this.startRecording();
       }, 500);
     }
+  }
+
+  onAudioSourceChange(event) {
+    this.audioSource = event.target.value;
+    console.log('Selected audio source:', this.audioSource);
+    
+    // Update UI based on source
+    if (this.audioSource === 'system' || this.audioSource === 'both') {
+      this.microphoneSelect.disabled = this.audioSource === 'system';
+    } else {
+      this.microphoneSelect.disabled = false;
+    }
+    
+    // If currently recording, stop and restart with the new source
+    if (this.isRecording) {
+      this.showToast('Switching audio source...');
+      this.stopRecording();
+      setTimeout(() => {
+        this.startRecording();
+      }, 500);
+    }
+  }
+
+  async captureMicrophoneAudio() {
+    const audioConstraints = {
+      sampleRate: 16000,
+      channelCount: 1,
+      echoCancellation: true,
+      noiseSuppression: true
+    };
+    
+    if (this.selectedMicrophoneId) {
+      audioConstraints.deviceId = { exact: this.selectedMicrophoneId };
+    }
+    
+    this.mediaStream = await navigator.mediaDevices.getUserMedia({
+      audio: audioConstraints
+    });
+  }
+
+  async captureSystemAudio() {
+    try {
+      // Use getDisplayMedia to capture tab/window audio
+      this.mediaStream = await navigator.mediaDevices.getDisplayMedia({
+        video: true, // Required for getDisplayMedia
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          sampleRate: 16000
+        }
+      });
+
+      // Stop the video track immediately (we only want audio)
+      const videoTrack = this.mediaStream.getVideoTracks()[0];
+      if (videoTrack) {
+        videoTrack.stop();
+        this.mediaStream.removeTrack(videoTrack);
+      }
+
+      // Check if audio was captured
+      const audioTracks = this.mediaStream.getAudioTracks();
+      if (audioTracks.length === 0) {
+        throw new Error('No audio track in the selected source. Please select a tab/window with audio.');
+      }
+
+    } catch (error) {
+      console.error('Error capturing system audio:', error);
+      throw new Error('Could not capture system audio. Make sure to select "Share audio" when choosing a tab/window.');
+    }
+  }
+
+  async captureBothAudio() {
+    try {
+      // Capture microphone
+      const audioConstraints = {
+        sampleRate: 16000,
+        channelCount: 1,
+        echoCancellation: true,
+        noiseSuppression: true
+      };
+      
+      if (this.selectedMicrophoneId) {
+        audioConstraints.deviceId = { exact: this.selectedMicrophoneId };
+      }
+      
+      const micStream = await navigator.mediaDevices.getUserMedia({
+        audio: audioConstraints
+      });
+
+      // Capture system audio
+      this.systemAudioStream = await navigator.mediaDevices.getDisplayMedia({
+        video: true,
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          sampleRate: 16000
+        }
+      });
+
+      // Stop the video track
+      const videoTrack = this.systemAudioStream.getVideoTracks()[0];
+      if (videoTrack) {
+        videoTrack.stop();
+        this.systemAudioStream.removeTrack(videoTrack);
+      }
+
+      // Check if system audio was captured
+      const systemAudioTracks = this.systemAudioStream.getAudioTracks();
+      if (systemAudioTracks.length === 0) {
+        this.systemAudioStream.getTracks().forEach(track => track.stop());
+        this.systemAudioStream = null;
+        this.showToast('No system audio detected. Using microphone only.');
+        this.mediaStream = micStream;
+        return;
+      }
+
+      // Create audio context to mix both streams
+      const audioContext = new AudioContext({ sampleRate: 16000 });
+      const destination = audioContext.createMediaStreamDestination();
+
+      // Connect microphone
+      const micSource = audioContext.createMediaStreamSource(micStream);
+      const micGain = audioContext.createGain();
+      micGain.gain.value = 1.0;
+      micSource.connect(micGain);
+      micGain.connect(destination);
+
+      // Connect system audio
+      const systemSource = audioContext.createMediaStreamSource(this.systemAudioStream);
+      const systemGain = audioContext.createGain();
+      systemGain.gain.value = 1.0;
+      systemSource.connect(systemGain);
+      systemGain.connect(destination);
+
+      // Use the mixed stream
+      this.mediaStream = destination.stream;
+
+    } catch (error) {
+      console.error('Error capturing both audio sources:', error);
+      throw new Error('Could not capture both audio sources. Make sure to grant all permissions.');
+    }
+  }
+
+  onAiToggleChange(event) {
+    this.aiResponseEnabled = event.target.checked;
+    
+    if (this.aiResponseEnabled) {
+      this.aiResponseContainer.style.display = 'block';
+      this.showToast('AI Auto-Reply enabled');
+    } else {
+      this.aiResponseContainer.style.display = 'none';
+      this.showToast('AI Auto-Reply disabled');
+    }
+  }
+
+  detectAndRespondToQuestion(text) {
+    // Clear previous timeout
+    if (this.questionDetectionTimeout) {
+      clearTimeout(this.questionDetectionTimeout);
+    }
+
+    // Wait a bit to see if more text comes in
+    this.questionDetectionTimeout = setTimeout(() => {
+      const trimmedText = text.trim();
+      
+      // Check if the text is a question
+      const isQuestion = trimmedText.endsWith('?') || 
+                        /^(what|why|how|when|where|who|which|can|could|would|should|is|are|do|does|did|will)/i.test(trimmedText);
+      
+      if (isQuestion) {
+        this.getAiResponse(trimmedText);
+      }
+    }, 1500); // Wait 1.5 seconds after the last transcript
+  }
+
+  async getAiResponse(question) {
+    try {
+      this.showToast('Getting AI response...');
+      
+      const response = await fetch('/api/chat', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          question,
+          conversationHistory: this.conversationHistory
+        })
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || `HTTP ${response.status}: Failed to get AI response`);
+      }
+
+      const data = await response.json();
+      
+      if (!data.answer) {
+        throw new Error('No answer received from AI');
+      }
+      
+      this.displayAiResponse(question, data.answer);
+      
+      // Update conversation history
+      this.conversationHistory.push(
+        { role: 'user', content: question },
+        { role: 'assistant', content: data.answer }
+      );
+      
+      // Keep only last 10 messages to avoid token limits
+      if (this.conversationHistory.length > 20) {
+        this.conversationHistory = this.conversationHistory.slice(-20);
+      }
+
+    } catch (error) {
+      console.error('Error getting AI response:', error);
+      this.showToast(`AI Error: ${error.message}`);
+    }
+  }
+
+  displayAiResponse(question, answer) {
+    // Remove placeholder
+    const placeholder = this.aiResponses.querySelector('.placeholder');
+    if (placeholder) {
+      placeholder.remove();
+    }
+
+    // Create response element
+    const responseEl = document.createElement('div');
+    responseEl.className = 'ai-response-item';
+    responseEl.innerHTML = `
+      <div class="ai-question"><strong>Q:</strong> ${this.escapeHtml(question)}</div>
+      <div class="ai-answer"><strong>A:</strong> ${this.escapeHtml(answer)}</div>
+      <div class="ai-timestamp">${new Date().toLocaleTimeString()}</div>
+    `;
+
+    this.aiResponses.appendChild(responseEl);
+    
+    // Scroll to bottom
+    this.aiResponses.scrollTop = this.aiResponses.scrollHeight;
+  }
+
+  clearAiResponses() {
+    this.aiResponses.innerHTML = '<p class="placeholder">AI responses will appear here...</p>';
+    this.conversationHistory = [];
+    this.showToast('AI responses cleared');
+  }
+
+  escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+  }
+
+  handleKeyboardShortcuts(event) {
+    // Ctrl/Cmd + Enter: Manually get AI response for current transcript
+    if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {
+      event.preventDefault();
+      this.manualAiResponse();
+    }
+    
+    // Ctrl/Cmd + K: Clear AI responses
+    if ((event.ctrlKey || event.metaKey) && event.key === 'k') {
+      event.preventDefault();
+      if (this.aiResponseEnabled) {
+        this.clearAiResponses();
+      }
+    }
+    
+    // Ctrl/Cmd + Shift + A: Toggle AI auto-reply
+    if ((event.ctrlKey || event.metaKey) && event.shiftKey && event.key === 'A') {
+      event.preventDefault();
+      this.aiResponseToggle.checked = !this.aiResponseToggle.checked;
+      this.onAiToggleChange({ target: this.aiResponseToggle });
+    }
+  }
+
+  manualAiResponse() {
+    if (!this.fullTranscript || !this.fullTranscript.trim()) {
+      this.showToast('No transcript available. Please record some audio first.');
+      return;
+    }
+
+    // Get the last sentence or the full transcript
+    const sentences = this.fullTranscript.trim().split(/[.!?]+/).filter(s => s.trim());
+    const lastSentence = sentences[sentences.length - 1].trim();
+    
+    if (!lastSentence) {
+      this.showToast('No valid text to send to AI.');
+      return;
+    }
+
+    // Show AI container if not visible
+    if (!this.aiResponseEnabled) {
+      this.aiResponseContainer.style.display = 'block';
+    }
+
+    this.showToast(`Sending to AI: "${lastSentence.substring(0, 50)}${lastSentence.length > 50 ? '...' : ''}"`);
+    this.getAiResponse(lastSentence);
   }
 }
 

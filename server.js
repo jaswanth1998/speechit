@@ -3,20 +3,71 @@ const express = require('express');
 const http = require('http');
 const WebSocket = require('ws');
 const path = require('path');
+const OpenAI = require('openai');
 
 const app = express();
 const server = http.createServer(app);
 const wss = new WebSocket.Server({ server });
 
 const ELEVENLABS_API_KEY = process.env.ELEVENLABS_API_KEY;
+const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 const ELEVENLABS_WS_URL = 'wss://api.elevenlabs.io/v1/speech-to-text/realtime';
+
+// Initialize OpenAI client
+const openai = new OpenAI({
+  apiKey: OPENAI_API_KEY
+});
 
 // Serve static files
 app.use(express.static(path.join(__dirname, 'public')));
 
+// Middleware for JSON parsing
+app.use(express.json());
+
 // Health check endpoint
 app.get('/api/health', (req, res) => {
-  res.json({ status: 'ok', hasApiKey: !!ELEVENLABS_API_KEY });
+  res.json({ 
+    status: 'ok', 
+    hasApiKey: !!ELEVENLABS_API_KEY,
+    hasOpenAI: !!OPENAI_API_KEY
+  });
+});
+
+// ChatGPT response endpoint
+app.post('/api/chat', async (req, res) => {
+  try {
+    const { question, conversationHistory } = req.body;
+    
+    if (!OPENAI_API_KEY) {
+      return res.status(500).json({ error: 'OpenAI API key not configured' });
+    }
+
+    const messages = [
+      {
+        role: 'system',
+        content: 'You are a helpful AI assistant. Provide clear, concise, and informative answers to questions. Keep responses brief but complete.'
+      },
+      ...(conversationHistory || []),
+      {
+        role: 'user',
+        content: question
+      }
+    ];
+
+    const completion = await openai.chat.completions.create({
+      model: 'gpt-4',
+      messages: messages,
+      max_tokens: 500,
+      temperature: 0.7
+    });
+
+    const answer = completion.choices[0].message.content;
+    res.json({ answer });
+
+  } catch (error) {
+    console.error('ChatGPT API error:', error);
+    res.status(500).json({ error: error.message || 'Failed to get ChatGPT response' });
+  }
 });
 
 // WebSocket connection handler

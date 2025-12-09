@@ -45,6 +45,22 @@
         </select>
       </div>
 
+      <div class="audio-source-selector">
+        <label for="audioSource">🔊 Source:</label>
+        <select id="audioSource">
+          <option value="microphone">Microphone</option>
+          <option value="system">System Audio</option>
+          <option value="both">Both (Mic + System)</option>
+        </select>
+      </div>
+
+      <div class="ai-toggle">
+        <label>
+          <input type="checkbox" id="aiResponseToggle">
+          <span>🤖 AI Auto-Reply</span>
+        </label>
+      </div>
+
       <button id="recordBtn" class="record-btn">
         <span class="btn-icon">🎙️</span>
         <span class="btn-text">Start Recording</span>
@@ -72,6 +88,19 @@
         <p class="placeholder">Your transcription will appear here...</p>
       </div>
       <div id="partialText" class="partial-text"></div>
+    </div>
+
+    <div id="aiResponseContainer" class="ai-response-container" style="display: none;">
+      <div class="ai-response-header">
+        <h2>🤖 AI Response</h2>
+        <div class="ai-header-actions">
+          <span class="keyboard-hint" title="Ctrl/Cmd+Enter: Get AI response | Ctrl/Cmd+K: Clear">⌨️ Shortcuts</span>
+          <button id="clearAiBtn" class="action-btn" title="Clear AI responses (Ctrl/Cmd+K)">🗑️ Clear</button>
+        </div>
+      </div>
+      <div id="aiResponses" class="ai-responses">
+        <p class="placeholder">AI responses will appear here...<br><small>Press Ctrl/Cmd+Enter to manually get AI response</small></p>
+      </div>
     </div>
 
     <div class="stats">
