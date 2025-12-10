@@ -105,6 +105,32 @@
             <button id="clearTranscriptBtn" class="action-btn" title="Clear">🗑️</button>
           </div>
         </div>
+        
+        <!-- Manual Input Section -->
+        <div class="manual-input-section">
+          <div class="input-group">
+            <textarea id="manualQuestionInput" placeholder="Type, paste a question, or paste an image (Ctrl+V)..." rows="2"></textarea>
+            <div class="input-actions">
+              <label for="imageUpload" class="upload-btn" title="Upload image">
+                📷 <span>Upload</span>
+                <input type="file" id="imageUpload" accept="image/*" style="display: none;">
+              </label>
+              <button id="submitManualQuestion" class="submit-btn" title="Get Answer (Enter)">
+                ➤ Get Answer
+              </button>
+            </div>
+          </div>
+          <div id="imagePreview" class="image-preview" style="display: none;">
+            <img id="previewImg" src="" alt="Preview">
+            <button id="removeImage" class="remove-image-btn" title="Remove image">✕</button>
+            <div class="image-info" id="imageInfo"></div>
+          </div>
+        </div>
+        
+        <div class="divider">
+          <span>OR</span>
+        </div>
+        
         <div id="transcript" class="transcript">
           <p class="placeholder">Interviewer's questions will appear here...<br><small>📡 Listening for audio from your meeting</small></p>
         </div>

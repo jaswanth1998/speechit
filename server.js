@@ -21,8 +21,9 @@ const openai = new OpenAI({
 // Serve static files
 app.use(express.static(path.join(__dirname, 'public')));
 
-// Middleware for JSON parsing
-app.use(express.json());
+// Middleware for JSON parsing with larger limit for images
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ limit: '10mb', extended: true }));
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {
@@ -36,7 +37,7 @@ app.get('/api/health', (req, res) => {
 // ChatGPT response endpoint with streaming
 app.post('/api/chat', async (req, res) => {
   try {
-    const { question, interviewContext, conversationHistory } = req.body;
+    const { question, interviewContext, conversationHistory, imageData } = req.body;
     
     if (!OPENAI_API_KEY) {
       return res.status(500).json({ error: 'OpenAI API key not configured' });
@@ -98,11 +99,26 @@ IMPORTANT: The candidate will read your answer while speaking, so:
       });
     }
 
-    // Add current question
-    messages.push({
+    // Add current question with optional image
+    const userMessage = {
       role: 'user',
-      content: `INTERVIEWER QUESTION: "${question}"\n\nProvide a suggested answer for this interview question.${conversationHistory && conversationHistory.length > 0 ? ' Consider the context from our previous conversation if relevant.' : ''}`
-    });
+      content: imageData 
+        ? [
+            {
+              type: 'text',
+              text: `INTERVIEWER QUESTION: "${question}"\n\nProvide a suggested answer for this interview question.${conversationHistory && conversationHistory.length > 0 ? ' Consider the context from our previous conversation if relevant.' : ''}`
+            },
+            {
+              type: 'image_url',
+              image_url: {
+                url: imageData
+              }
+            }
+          ]
+        : `INTERVIEWER QUESTION: "${question}"\n\nProvide a suggested answer for this interview question.${conversationHistory && conversationHistory.length > 0 ? ' Consider the context from our previous conversation if relevant.' : ''}`
+    };
+    
+    messages.push(userMessage);
 
     // Set headers for streaming
     res.setHeader('Content-Type', 'text/event-stream');

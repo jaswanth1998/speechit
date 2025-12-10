@@ -66,6 +66,15 @@ class InterviewAssistantApp {
     this.isResizing = false;
     this.overlay = null;
 
+    // Manual input elements
+    this.manualQuestionInput = document.getElementById('manualQuestionInput');
+    this.imageUpload = document.getElementById('imageUpload');
+    this.imagePreview = document.getElementById('imagePreview');
+    this.previewImg = document.getElementById('previewImg');
+    this.removeImageBtn = document.getElementById('removeImage');
+    this.submitManualQuestionBtn = document.getElementById('submitManualQuestion');
+    this.uploadedImageData = null;
+
     this.init();
   }
 
@@ -78,6 +87,27 @@ class InterviewAssistantApp {
     this.regenerateBtn.addEventListener('click', () => this.regenerateAnswer());
     this.microphoneSelect.addEventListener('change', (e) => this.onMicrophoneChange(e));
     this.audioSourceSelect.addEventListener('change', (e) => this.onAudioSourceChange(e));
+    
+    // Manual input controls
+    this.submitManualQuestionBtn.addEventListener('click', () => this.submitManualQuestion());
+    this.imageUpload.addEventListener('change', (e) => this.handleImageUpload(e));
+    this.removeImageBtn.addEventListener('click', () => this.removeImage());
+    this.manualQuestionInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        this.submitManualQuestion();
+      }
+    });
+    
+    // Handle paste for images
+    this.manualQuestionInput.addEventListener('paste', (e) => this.handlePaste(e));
+    document.addEventListener('paste', (e) => {
+      // Only handle paste if textarea is focused or no other input is focused
+      if (document.activeElement === this.manualQuestionInput || 
+          !['INPUT', 'TEXTAREA'].includes(document.activeElement.tagName)) {
+        this.handlePaste(e);
+      }
+    });
     
     // Expand/resize controls
     this.expandAnswerBtn.addEventListener('click', () => this.toggleExpand());
@@ -219,6 +249,7 @@ class InterviewAssistantApp {
   }
 
   handleMessage(data) {
+    
     switch (data.type) {
       case 'connected':
         this.updateStatus('Connected', 'connected');
@@ -309,7 +340,7 @@ class InterviewAssistantApp {
     }, 2000); // Wait 2 seconds of silence
   }
 
-  async getInterviewAnswer(question) {
+  async getInterviewAnswer(question, imageData = null) {
     if (this.isGeneratingAnswer) return;
     
     try {
@@ -329,6 +360,7 @@ class InterviewAssistantApp {
         },
         body: JSON.stringify({
           question,
+          imageData,
           interviewContext: this.interviewContext,
           conversationHistory: this.conversationHistory.slice(-10) // Last 10 exchanges for context
         })
@@ -751,6 +783,138 @@ class InterviewAssistantApp {
       return;
     }
     this.getInterviewAnswer(this.currentQuestion.trim());
+  }
+
+  async submitManualQuestion() {
+    const question = this.manualQuestionInput.value.trim();
+    
+    if (!question && !this.uploadedImageData) {
+      this.showToast('Please enter a question or upload an image');
+      return;
+    }
+
+    // Update the transcript display
+    this.transcript.innerHTML = '';
+    const questionEl = document.createElement('p');
+    questionEl.textContent = question || '[Image question]';
+    this.transcript.appendChild(questionEl);
+    
+    // If there's an image, show it in transcript
+    if (this.uploadedImageData) {
+      const imgEl = document.createElement('img');
+      imgEl.src = this.uploadedImageData;
+      imgEl.style.maxWidth = '100%';
+      imgEl.style.marginTop = '10px';
+      imgEl.style.borderRadius = '8px';
+      this.transcript.appendChild(imgEl);
+    }
+
+    this.currentQuestion = question || 'What is shown in this image?';
+    this.questionCount++;
+    this.questionCountEl.textContent = this.questionCount;
+
+    // Get answer with optional image
+    await this.getInterviewAnswer(this.currentQuestion, this.uploadedImageData);
+
+    // Clear input
+    this.manualQuestionInput.value = '';
+    this.removeImage();
+  }
+
+  handleImageUpload(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    if (!file.type.startsWith('image/')) {
+      this.showToast('Please upload an image file');
+      return;
+    }
+
+    this.processImageFile(file);
+  }
+
+  handlePaste(event) {
+    const items = event.clipboardData?.items;
+    if (!items) return;
+
+    for (let item of items) {
+      if (item.type.indexOf('image') !== -1) {
+        event.preventDefault();
+        const file = item.getAsFile();
+        if (file) {
+          this.processImageFile(file);
+          this.showToast('📷 Image pasted successfully');
+        }
+        break;
+      }
+    }
+  }
+
+  processImageFile(file) {
+    const maxSize = 5 * 1024 * 1024; // 5MB limit
+    
+    if (file.size > maxSize) {
+      this.showToast('⚠️ Image too large. Compressing...');
+    }
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onload = () => {
+        // Compress and resize image
+        const canvas = document.createElement('canvas');
+        let width = img.width;
+        let height = img.height;
+        
+        // Resize if too large (max 1024px on longest side)
+        const maxDimension = 1024;
+        if (width > maxDimension || height > maxDimension) {
+          if (width > height) {
+            height = (height / width) * maxDimension;
+            width = maxDimension;
+          } else {
+            width = (width / height) * maxDimension;
+            height = maxDimension;
+          }
+        }
+        
+        canvas.width = width;
+        canvas.height = height;
+        
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, width, height);
+        
+        // Compress to JPEG with quality 0.8
+        const compressedDataUrl = canvas.toDataURL('image/jpeg', 0.8);
+        
+        // Calculate compressed size
+        const sizeKB = Math.round((compressedDataUrl.length * 3/4) / 1024);
+        
+        this.uploadedImageData = compressedDataUrl;
+        this.previewImg.src = compressedDataUrl;
+        this.imagePreview.style.display = 'block';
+        
+        // Show image info
+        const imageInfo = document.getElementById('imageInfo');
+        if (imageInfo) {
+          imageInfo.textContent = `${width}×${height}px • ${sizeKB}KB`;
+        }
+      };
+      img.src = e.target.result;
+    };
+    reader.readAsDataURL(file);
+  }
+
+  removeImage() {
+    this.uploadedImageData = null;
+    this.previewImg.src = '';
+    this.imagePreview.style.display = 'none';
+    this.imageUpload.value = '';
+    
+    const imageInfo = document.getElementById('imageInfo');
+    if (imageInfo) {
+      imageInfo.textContent = '';
+    }
   }
 
   async loadAudioDevices() {
