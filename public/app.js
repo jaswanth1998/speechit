@@ -11,7 +11,7 @@ class InterviewAssistantApp {
     this.currentQuestion = '';
     this.selectedMicrophoneId = null;
     this.audioDevices = [];
-    this.audioSource = 'system';
+    this.audioSource = 'microphone'; // Default to microphone (more reliable)
     this.systemAudioStream = null;
     this.questionCount = 0;
     this.questionDetectionTimeout = null;
@@ -1213,7 +1213,81 @@ class InterviewAssistantApp {
   }
 }
 
+// Electron integration
+class ElectronControls {
+  constructor() {
+    this.isElectron = window.electronAPI?.isElectron || false;
+    this.isStealthMode = true;
+    this.currentOpacity = 1.0;
+    
+    if (this.isElectron) {
+      this.init();
+    }
+  }
+  
+  init() {
+    // Add electron class to body
+    document.body.classList.add('electron-app');
+    
+    // Get control elements
+    this.stealthBtn = document.getElementById('stealthBtn');
+    this.opacityBtn = document.getElementById('opacityBtn');
+    this.minimizeBtn = document.getElementById('minimizeBtn');
+    this.stealthIndicator = document.getElementById('stealthIndicator');
+    
+    // Bind events
+    if (this.stealthBtn) {
+      this.stealthBtn.addEventListener('click', () => this.toggleStealth());
+    }
+    
+    if (this.opacityBtn) {
+      this.opacityBtn.addEventListener('click', () => this.toggleOpacity());
+    }
+    
+    if (this.minimizeBtn) {
+      this.minimizeBtn.addEventListener('click', () => {
+        // Trigger the global shortcut behavior (hide window)
+        window.electronAPI?.setOpacity(0);
+        setTimeout(() => window.electronAPI?.setOpacity(this.currentOpacity), 100);
+      });
+    }
+    
+    console.log('🕵️ Electron Stealth Mode Active');
+  }
+  
+  async toggleStealth() {
+    if (window.electronAPI) {
+      this.isStealthMode = await window.electronAPI.toggleStealth();
+      this.updateStealthIndicator();
+    }
+  }
+  
+  updateStealthIndicator() {
+    if (this.stealthIndicator) {
+      if (this.isStealthMode) {
+        this.stealthIndicator.textContent = '🕵️ Stealth ON';
+        this.stealthIndicator.classList.remove('off');
+      } else {
+        this.stealthIndicator.textContent = '⚠️ Stealth OFF';
+        this.stealthIndicator.classList.add('off');
+      }
+    }
+  }
+  
+  toggleOpacity() {
+    if (window.electronAPI) {
+      this.currentOpacity = this.currentOpacity > 0.5 ? 0.4 : 1.0;
+      window.electronAPI.setOpacity(this.currentOpacity);
+      
+      if (this.opacityBtn) {
+        this.opacityBtn.textContent = this.currentOpacity > 0.5 ? '👁️' : '👁️‍🗨️';
+      }
+    }
+  }
+}
+
 // Initialize app when DOM is loaded
 document.addEventListener('DOMContentLoaded', () => {
   new InterviewAssistantApp();
+  new ElectronControls();
 });

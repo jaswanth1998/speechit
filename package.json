@@ -2,10 +2,55 @@
   "name": "speechit",
   "version": "1.0.0",
   "description": "Real-time speech to text app using ElevenLabs Scribe-v2",
-  "main": "server.js",
+  "main": "electron/main.js",
   "scripts": {
     "start": "node server.js",
-    "dev": "node server.js"
+    "dev": "node server.js",
+    "electron": "electron .",
+    "electron-dev": "NODE_ENV=development electron .",
+    "build": "electron-builder",
+    "build:mac": "electron-builder --mac",
+    "build:win": "electron-builder --win",
+    "build:linux": "electron-builder --linux",
+    "pack": "electron-builder --dir"
+  },
+  "build": {
+    "appId": "com.interviewai.stealth",
+    "productName": "InterviewAI",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "electron/**/*",
+      "public/**/*",
+      "server.js",
+      "package.json",
+      ".env"
+    ],
+    "mac": {
+      "category": "public.app-category.productivity",
+      "target": [
+        "dmg",
+        "zip"
+      ],
+      "darkModeSupport": true
+    },
+    "win": {
+      "target": [
+        "nsis",
+        "portable"
+      ]
+    },
+    "linux": {
+      "target": [
+        "AppImage",
+        "deb"
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    }
   },
   "dependencies": {
     "dotenv": "^16.3.1",
@@ -13,12 +58,18 @@
     "openai": "^4.104.0",
     "ws": "^8.14.2"
   },
+  "devDependencies": {
+    "electron": "^28.3.3",
+    "electron-builder": "^24.13.3"
+  },
   "keywords": [
     "speech-to-text",
     "elevenlabs",
     "scribe",
     "realtime",
-    "transcription"
+    "transcription",
+    "interview",
+    "ai"
   ],
   "author": "",
   "license": "MIT"

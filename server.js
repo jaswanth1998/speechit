@@ -155,6 +155,19 @@ wss.on('connection', (clientWs) => {
   
   let elevenLabsWs = null;
   let isConnected = false;
+  let reconnectAttempts = 0;
+  const MAX_RECONNECT_ATTEMPTS = 3;
+
+  // Keep connection alive with ping/pong
+  const pingInterval = setInterval(() => {
+    if (clientWs.readyState === WebSocket.OPEN) {
+      try {
+        clientWs.ping();
+      } catch (e) {
+        console.log('Ping failed:', e.message);
+      }
+    }
+  }, 30000); // Ping every 30 seconds
 
   // Handle messages from client
   clientWs.on('message', (message) => {
@@ -173,29 +186,41 @@ wss.on('connection', (clientWs) => {
         wsUrl.searchParams.set('min_speech_duration_ms', '100');
         wsUrl.searchParams.set('min_silence_duration_ms', '1500');
 
-        elevenLabsWs = new WebSocket(wsUrl.toString(), {
-          headers: {
-            'xi-api-key': ELEVENLABS_API_KEY
-          }
-        });
+        try {
+          console.log('Connecting to ElevenLabs...');
+          elevenLabsWs = new WebSocket(wsUrl.toString(), {
+            headers: {
+              'xi-api-key': ELEVENLABS_API_KEY
+            }
+          });
 
-        elevenLabsWs.on('open', () => {
-          console.log('Connected to ElevenLabs');
-          isConnected = true;
-          clientWs.send(JSON.stringify({ type: 'connected' }));
-        });
+          elevenLabsWs.on('open', () => {
+            console.log('✅ Connected to ElevenLabs');
+            isConnected = true;
+            reconnectAttempts = 0;
+            if (clientWs.readyState === WebSocket.OPEN) {
+              clientWs.send(JSON.stringify({ type: 'connected' }));
+            }
+          });
 
         elevenLabsWs.on('message', (msg) => {
           try {
             const response = JSON.parse(msg.toString());
+            console.log('📨 ElevenLabs message:', response.message_type);
             
-            // Forward transcription events to client
+            // Forward transcription events to client (only if connection is open)
+            if (clientWs.readyState !== WebSocket.OPEN) {
+              console.log('Client WebSocket not open, skipping message');
+              return;
+            }
+
             if (response.message_type === 'session_started') {
               clientWs.send(JSON.stringify({
                 type: 'session_started',
                 session_id: response.session_id,
                 config: response.config
               }));
+              console.log('✅ ElevenLabs session started:', response.session_id);
             } else if (response.message_type === 'partial_transcript') {
               clientWs.send(JSON.stringify({
                 type: 'partial',
@@ -220,23 +245,41 @@ wss.on('connection', (clientWs) => {
               }));
             }
           } catch (e) {
-            console.error('Error parsing ElevenLabs message:', e);
+            console.error('❌ Error parsing ElevenLabs message:', e);
           }
         });
 
         elevenLabsWs.on('error', (error) => {
-          console.error('ElevenLabs WebSocket error:', error);
-          clientWs.send(JSON.stringify({
-            type: 'error',
-            message: 'Connection error with transcription service'
-          }));
+          console.error('❌ ElevenLabs WebSocket error:', error.message);
+          isConnected = false;
+          
+          if (clientWs.readyState === WebSocket.OPEN) {
+            clientWs.send(JSON.stringify({
+              type: 'error',
+              message: 'Connection error with transcription service: ' + error.message
+            }));
+          }
         });
 
-        elevenLabsWs.on('close', () => {
-          console.log('ElevenLabs connection closed');
+        elevenLabsWs.on('close', (code, reason) => {
+          console.log('⚠️ ElevenLabs connection closed. Code:', code, 'Reason:', reason.toString());
           isConnected = false;
-          clientWs.send(JSON.stringify({ type: 'disconnected' }));
+          
+          if (clientWs.readyState === WebSocket.OPEN) {
+            clientWs.send(JSON.stringify({ 
+              type: 'disconnected',
+              code: code,
+              reason: reason.toString()
+            }));
+          }
         });
+        } catch (e) {
+          console.error('Error connecting to ElevenLabs:', e);
+          clientWs.send(JSON.stringify({
+            type: 'error',
+            message: 'Failed to connect to transcription service'
+          }));
+        }
 
       } else if (data.type === 'audio') {
         // Forward audio data to ElevenLabs
@@ -271,22 +314,30 @@ wss.on('connection', (clientWs) => {
   });
 
   clientWs.on('close', () => {
-    console.log('Client disconnected');
-    if (elevenLabsWs) {
+    console.log('👋 Client disconnected');
+    clearInterval(pingInterval);
+    if (elevenLabsWs && elevenLabsWs.readyState === WebSocket.OPEN) {
       elevenLabsWs.close();
     }
   });
 
   clientWs.on('error', (error) => {
-    console.error('Client WebSocket error:', error);
-    if (elevenLabsWs) {
+    console.error('❌ Client WebSocket error:', error.message);
+    clearInterval(pingInterval);
+    if (elevenLabsWs && elevenLabsWs.readyState === WebSocket.OPEN) {
       elevenLabsWs.close();
     }
+  });
+
+  // Handle client pong responses
+  clientWs.on('pong', () => {
+    // Client is alive
   });
 });
 
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
-  console.log(`🎤 SpeechIt server running at http://localhost:${PORT}`);
+  console.log(`🎤 SpeechIt server listening on port ${PORT}`);
+  console.log(`Server running at http://localhost:${PORT}`);
   console.log(`📝 Real-time transcription powered by ElevenLabs Scribe-v2`);
 });

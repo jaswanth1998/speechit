@@ -11,9 +11,21 @@
 </head>
 <body>
   <div class="container">
+    <!-- Draggable Title Bar for Electron -->
+    <div class="title-bar" id="titleBar">
+      <div class="title-bar-drag">
+        <span class="app-title">🎯 InterviewAI</span>
+        <span class="stealth-indicator" id="stealthIndicator">🕵️ Stealth ON</span>
+      </div>
+      <div class="title-bar-controls">
+        <button class="title-btn" id="opacityBtn" title="Toggle Opacity (Ctrl+Shift+O)">👁️</button>
+        <button class="title-btn" id="stealthBtn" title="Toggle Stealth Mode (Ctrl+Shift+S)">🛡️</button>
+        <button class="title-btn minimize" id="minimizeBtn" title="Hide (Ctrl+Shift+I)">─</button>
+      </div>
+    </div>
+    
     <header>
-      <h1>🎯 InterviewAI</h1>
-      <p class="subtitle">Your Real-time Interview Assistant - Listen to questions, get instant answers</p>
+      <p class="subtitle">Real-time Interview Assistant - Listen to questions, get instant answers</p>
     </header>
 
     <!-- Interview Setup Panel -->
@@ -67,8 +79,8 @@
       <div class="audio-source-selector">
         <label for="audioSource">🔊 Audio Input:</label>
         <select id="audioSource">
-          <option value="system" selected>System Audio (Interviewer)</option>
-          <option value="microphone">Microphone</option>
+          <option value="microphone" selected>Microphone</option>
+          <option value="system">System Audio (Interviewer)</option>
           <option value="both">Both</option>
         </select>
       </div>
@@ -184,6 +196,11 @@
       </div>
     </div>
   </div>
+
+  <!-- Resize areas for Electron frameless window -->
+  <div class="resize-area-bottom" id="resizeBottom"></div>
+  <div class="resize-area-right" id="resizeRight"></div>
+  <div class="resize-area-corner" id="resizeCorner"></div>
 
   <script src="app.js"></script>
 </body>
