@@ -58,6 +58,14 @@ class InterviewAssistantApp {
     this.experienceSelect = document.getElementById('experience');
     this.resumeContextInput = document.getElementById('resumeContext');
 
+    // Expand/resize elements
+    this.answerContainer = document.getElementById('answerContainer');
+    this.expandAnswerBtn = document.getElementById('expandAnswerBtn');
+    this.resizeHandle = document.getElementById('resizeHandle');
+    this.isExpanded = false;
+    this.isResizing = false;
+    this.overlay = null;
+
     this.init();
   }
 
@@ -70,6 +78,10 @@ class InterviewAssistantApp {
     this.regenerateBtn.addEventListener('click', () => this.regenerateAnswer());
     this.microphoneSelect.addEventListener('change', (e) => this.onMicrophoneChange(e));
     this.audioSourceSelect.addEventListener('change', (e) => this.onAudioSourceChange(e));
+    
+    // Expand/resize controls
+    this.expandAnswerBtn.addEventListener('click', () => this.toggleExpand());
+    this.initResize();
     
     // Setup fields listeners
     this.jobRoleInput.addEventListener('input', () => this.updateInterviewContext());
@@ -902,6 +914,13 @@ class InterviewAssistantApp {
   }
 
   handleKeyboardShortcuts(event) {
+    // Escape: Close expanded panel
+    if (event.key === 'Escape' && this.isExpanded) {
+      event.preventDefault();
+      this.toggleExpand();
+      return;
+    }
+
     // Ctrl/Cmd + Enter: Manual answer generation
     if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {
       event.preventDefault();
@@ -919,6 +938,92 @@ class InterviewAssistantApp {
       event.preventDefault();
       this.copyAnswer();
     }
+
+    // Ctrl/Cmd + E: Toggle expand
+    if ((event.ctrlKey || event.metaKey) && event.key === 'e') {
+      event.preventDefault();
+      this.toggleExpand();
+    }
+  }
+
+  // Expand/Popout functionality
+  toggleExpand() {
+    this.isExpanded = !this.isExpanded;
+    
+    if (this.isExpanded) {
+      // Create overlay
+      this.overlay = document.createElement('div');
+      this.overlay.className = 'overlay';
+      this.overlay.addEventListener('click', () => this.toggleExpand());
+      document.body.appendChild(this.overlay);
+      
+      // Expand the container
+      this.answerContainer.classList.add('expanded');
+      this.expandAnswerBtn.innerHTML = '✕';
+      this.expandAnswerBtn.title = 'Close (Esc)';
+      
+      // Prevent body scroll
+      document.body.style.overflow = 'hidden';
+    } else {
+      // Remove overlay
+      if (this.overlay) {
+        this.overlay.remove();
+        this.overlay = null;
+      }
+      
+      // Collapse the container
+      this.answerContainer.classList.remove('expanded');
+      this.expandAnswerBtn.innerHTML = '⛶';
+      this.expandAnswerBtn.title = 'Expand (Ctrl+E)';
+      
+      // Restore body scroll
+      document.body.style.overflow = '';
+    }
+  }
+
+  // Resize functionality
+  initResize() {
+    let startY, startHeight;
+
+    const onMouseDown = (e) => {
+      if (this.isExpanded) return; // Don't resize when expanded
+      
+      this.isResizing = true;
+      startY = e.clientY;
+      startHeight = this.answerContainer.offsetHeight;
+      
+      document.addEventListener('mousemove', onMouseMove);
+      document.addEventListener('mouseup', onMouseUp);
+      
+      // Prevent text selection during resize
+      document.body.style.userSelect = 'none';
+      e.preventDefault();
+    };
+
+    const onMouseMove = (e) => {
+      if (!this.isResizing) return;
+      
+      const deltaY = e.clientY - startY;
+      const newHeight = Math.max(200, Math.min(800, startHeight + deltaY));
+      
+      this.answerContainer.style.height = `${newHeight}px`;
+      this.answerPanel.style.maxHeight = `${newHeight - 120}px`;
+    };
+
+    const onMouseUp = () => {
+      this.isResizing = false;
+      document.removeEventListener('mousemove', onMouseMove);
+      document.removeEventListener('mouseup', onMouseUp);
+      document.body.style.userSelect = '';
+    };
+
+    this.resizeHandle.addEventListener('mousedown', onMouseDown);
+    
+    // Touch support
+    this.resizeHandle.addEventListener('touchstart', (e) => {
+      const touch = e.touches[0];
+      onMouseDown({ clientY: touch.clientY, preventDefault: () => {} });
+    });
   }
 
   showToast(message) {

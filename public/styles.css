@@ -344,6 +344,106 @@ header h1 {
   color: var(--text-primary);
 }
 
+/* Expand Button */
+.expand-btn {
+  font-size: 1rem;
+  padding: 0.3rem 0.5rem;
+}
+
+.expand-btn:hover {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: white;
+}
+
+/* Resize Handle */
+.resize-handle {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 8px;
+  background: linear-gradient(to bottom, transparent, var(--border));
+  cursor: ns-resize;
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+
+.answer-container:hover .resize-handle {
+  opacity: 1;
+}
+
+.resize-handle:hover {
+  background: linear-gradient(to bottom, transparent, var(--primary));
+}
+
+/* Answer Container - make it positionable for resize handle */
+.answer-container {
+  position: relative;
+}
+
+/* Expanded/Popout Mode */
+.answer-container.expanded {
+  position: fixed !important;
+  top: 20px !important;
+  left: 20px !important;
+  right: 20px !important;
+  bottom: 20px !important;
+  width: auto !important;
+  height: auto !important;
+  max-height: none !important;
+  z-index: 1000;
+  background: var(--bg-card);
+  border: 2px solid var(--primary);
+  border-radius: 16px;
+  box-shadow: 0 25px 80px rgba(0, 0, 0, 0.6);
+  animation: expandIn 0.3s ease;
+}
+
+.answer-container.expanded .answer-panel {
+  max-height: calc(100vh - 200px) !important;
+  min-height: 300px;
+}
+
+.answer-container.expanded .expand-btn {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: white;
+}
+
+.answer-container.expanded .resize-handle {
+  display: none;
+}
+
+@keyframes expandIn {
+  from {
+    opacity: 0;
+    transform: scale(0.9);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* Overlay when expanded */
+.overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.7);
+  backdrop-filter: blur(4px);
+  z-index: 999;
+  animation: fadeIn 0.2s ease;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
 /* Transcript / Question Area */
 .transcript {
   min-height: 150px;

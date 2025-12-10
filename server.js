@@ -111,10 +111,9 @@ IMPORTANT: The candidate will read your answer while speaking, so:
 
     // Use streaming API
     const stream = await openai.chat.completions.create({
-      model: 'gpt-4',
+      model: 'gpt-5.1',
       messages: messages,
-      max_tokens: 800,
-      temperature: 0.7,
+      max_completion_tokens: 800,
       stream: true
     });
 

@@ -112,13 +112,14 @@
       </div>
 
       <!-- Right: AI Suggested Answers -->
-      <div class="answer-container">
+      <div class="answer-container" id="answerContainer">
         <div class="panel-header">
           <h2>💡 Suggested Answer</h2>
           <div class="panel-actions">
             <button id="copyAnswerBtn" class="action-btn" title="Copy Answer">📋</button>
             <button id="regenerateBtn" class="action-btn" title="Regenerate (Ctrl+Enter)">🔄</button>
             <button id="clearAnswerBtn" class="action-btn" title="Clear">🗑️</button>
+            <button id="expandAnswerBtn" class="action-btn expand-btn" title="Expand (Esc to close)">⛶</button>
           </div>
         </div>
         <div id="answerPanel" class="answer-panel">
@@ -127,6 +128,7 @@
         <div class="answer-status">
           <span id="answerStatus"></span>
         </div>
+        <div class="resize-handle" id="resizeHandle" title="Drag to resize"></div>
       </div>
     </div>
 
@@ -136,7 +138,7 @@
       <div class="tips-grid">
         <div class="tip">⌨️ <strong>Ctrl+Enter:</strong> Get answer for current question</div>
         <div class="tip">🔊 <strong>System Audio:</strong> Captures interviewer from Google Meet/Zoom</div>
-        <div class="tip">📋 <strong>Setup:</strong> Fill in job details for personalized answers</div>
+        <div class="tip">⛶ <strong>Ctrl+E:</strong> Expand answer panel to fullscreen</div>
         <div class="tip">🎯 <strong>Best Practice:</strong> Use answers as reference, speak naturally</div>
       </div>
     </div>
