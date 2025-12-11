@@ -20,6 +20,8 @@ class InterviewAssistantApp {
     this.currentStreamingAnswer = '';
     this.conversationHistory = []; // Track Q&A for context
 
+    this.pcmBuffer = [];                  // temp buffer for PCM samples
+    this.PCM_SAMPLES_PER_CHUNK = 1600; 
     // Interview context
     this.interviewContext = {
       jobRole: '',
@@ -594,94 +596,64 @@ class InterviewAssistantApp {
     return formatted;
   }
 
-  startAudioProcessing() {
+  async startAudioProcessing() {
     try {
       const AudioContextCtor = window.AudioContext || window.webkitAudioContext;
-  
-      if (!AudioContextCtor) {
-        console.error('AudioContext is not supported in this environment');
-        this.showToast?.('Audio processing is not supported in this environment.');
-        this.stopRecording?.();
-        return;
-      }
-  
-      if (!this.mediaStream) {
-        console.error('No mediaStream available when starting audio processing');
-        this.showToast?.('No audio stream available. Please check microphone permissions.');
-        this.stopRecording?.();
-        return;
-      }
-  
-      // Clean up any previous audio graph if it exists
-      if (this.processor) {
-        this.processor.disconnect();
-        this.processor.onaudioprocess = null;
-        this.processor = null;
-      }
-      if (this.analyser) {
-        this.analyser.disconnect();
-        this.analyser = null;
-      }
-      if (this.audioContext && this.audioContext.state !== 'closed') {
-        this.audioContext.close().catch(() => {});
-        this.audioContext = null;
-      }
-  
-      // Context + source (already proven safe)
-      this.audioContext = new AudioContextCtor();
+      this.audioContext = new AudioContextCtor({ sampleRate: 16000 });
       console.log('AudioContext created, sampleRate =', this.audioContext.sampleRate);
   
+      await this.audioContext.audioWorklet.addModule('audio-worklet-processor.js');
+      console.log('Worklet loaded');
+  
       const source = this.audioContext.createMediaStreamSource(this.mediaStream);
-      console.log('MediaStreamSource created (Electron debug)');
+      console.log('MediaStreamSource created');
   
-      // Optional analyser (should be safe too)
-      this.analyser = this.audioContext.createAnalyser();
-      this.analyser.fftSize = 256;
-      source.connect(this.analyser);
-      console.log('Analyser created & connected (Electron debug)');
+      const workletNode = new AudioWorkletNode(this.audioContext, 'pcm-worklet');
+      console.log('WorkletNode created');
   
-      // 🔹 PHASE 3: ScriptProcessor, but NOT connected to destination yet
-      const bufferSize = 4096;
-      this.processor = this.audioContext.createScriptProcessor(bufferSize, 1, 1);
-      source.connect(this.processor);
-      console.log('ScriptProcessor created & connected to source (Electron debug)');
+      source.connect(workletNode);
   
-      this.processor.onaudioprocess = (event) => {
+      // reset buffer whenever we start
+      this.pcmBuffer = [];
+  
+      workletNode.port.onmessage = (event) => {
         try {
-          if (!this.isRecording || !this.ws || this.ws.readyState !== WebSocket.OPEN) {
-            return;
+          if (!this.isRecording || !this.ws || this.ws.readyState !== WebSocket.OPEN) return;
+  
+          const buffer = event.data;
+          if (!buffer) return;
+  
+          // we expect the worklet to send Int16 PCM
+          const samples = new Int16Array(buffer);
+  
+          // accumulate samples
+          for (let i = 0; i < samples.length; i++) {
+            this.pcmBuffer.push(samples[i]);
           }
   
-          const inputData = event.inputBuffer.getChannelData(0);
-          const pcmData = new Int16Array(inputData.length);
+          // while we have enough for ~100ms, send a chunk
+          while (this.pcmBuffer.length >= this.PCM_SAMPLES_PER_CHUNK) {
+            const chunk = new Int16Array(
+              this.pcmBuffer.splice(0, this.PCM_SAMPLES_PER_CHUNK)
+            );
   
-          for (let i = 0; i < inputData.length; i++) {
-            const s = Math.max(-1, Math.min(1, inputData[i]));
-            pcmData[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
-          }
+            const base64Audio = this.arrayBufferToBase64(chunk.buffer);
   
-          const base64Audio = this.arrayBufferToBase64(pcmData.buffer);
-  
-          if (this.ws && this.ws.readyState === WebSocket.OPEN) {
             this.ws.send(JSON.stringify({
               type: 'audio',
               audio: base64Audio,
-              sampleRate: this.audioContext.sampleRate
+              sampleRate: 16000
             }));
           }
         } catch (err) {
-          console.error('Error in onaudioprocess handler:', err);
+          console.error('Error in worklet onmessage:', err);
         }
       };
   
-      // NOTE: still no `processor.connect(this.audioContext.destination)`
-      // and you can add visualizer only if needed later
-      // this.drawVisualizer?.();
-  
+      console.log('AudioWorklet pipeline initialized');
     } catch (err) {
-      console.error('Error in startAudioProcessing (PHASE 3):', err);
-      this.showToast?.('Failed to start audio processing: ' + (err.message || 'Unknown error'));
-      this.stopRecording?.();
+      console.error('AudioWorklet error:', err);
+      this.showToast?.('Failed to start recording: ' + err.message);
     }
   }
 
