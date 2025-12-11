@@ -255,14 +255,22 @@ class InterviewAssistantApp {
         this.updateStatus('Connected', 'connected');
         break;
 
-      case 'session_started':
-        console.log('Session started:', data.session_id);
-        this.isRecording = true;
-        this.updateUI();
-        this.startAudioProcessing();
-        this.startDurationTimer();
-        this.interviewStatusEl.textContent = 'Listening...';
-        break;
+        case 'session_started':
+          console.log('Session started:', data.session_id, '(Electron debug)');
+          this.isRecording = true;
+          this.interviewStatusEl.textContent = 'Listening...';
+
+          try {
+            this.updateUI();
+            this.startDurationTimer();
+            this.startAudioProcessing();
+          } catch (err) {
+            console.error('Error in session_started handler:', err);
+            this.showToast?.('Error starting audio: ' + (err.message || 'Unknown error'));
+            this.stopRecording?.();
+          }
+
+          break;
 
       case 'partial':
         this.partialText.textContent = data.text;
@@ -587,45 +595,94 @@ class InterviewAssistantApp {
   }
 
   startAudioProcessing() {
-    this.audioContext = new (window.AudioContext || window.webkitAudioContext)({
-      sampleRate: 16000
-    });
-
-    const source = this.audioContext.createMediaStreamSource(this.mediaStream);
-    
-    this.analyser = this.audioContext.createAnalyser();
-    this.analyser.fftSize = 256;
-    source.connect(this.analyser);
-
-    const bufferSize = 4096;
-    this.processor = this.audioContext.createScriptProcessor(bufferSize, 1, 1);
-
-    source.connect(this.processor);
-    this.processor.connect(this.audioContext.destination);
-
-    this.processor.onaudioprocess = (event) => {
-      if (!this.isRecording || !this.ws || this.ws.readyState !== WebSocket.OPEN) {
+    try {
+      const AudioContextCtor = window.AudioContext || window.webkitAudioContext;
+  
+      if (!AudioContextCtor) {
+        console.error('AudioContext is not supported in this environment');
+        this.showToast?.('Audio processing is not supported in this environment.');
+        this.stopRecording?.();
         return;
       }
-
-      const inputData = event.inputBuffer.getChannelData(0);
-      
-      const pcmData = new Int16Array(inputData.length);
-      for (let i = 0; i < inputData.length; i++) {
-        const s = Math.max(-1, Math.min(1, inputData[i]));
-        pcmData[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
+  
+      if (!this.mediaStream) {
+        console.error('No mediaStream available when starting audio processing');
+        this.showToast?.('No audio stream available. Please check microphone permissions.');
+        this.stopRecording?.();
+        return;
       }
-
-      const base64Audio = this.arrayBufferToBase64(pcmData.buffer);
-
-      this.ws.send(JSON.stringify({
-        type: 'audio',
-        audio: base64Audio,
-        sampleRate: 16000
-      }));
-    };
-
-    this.drawVisualizer();
+  
+      // Clean up any previous audio graph if it exists
+      if (this.processor) {
+        this.processor.disconnect();
+        this.processor.onaudioprocess = null;
+        this.processor = null;
+      }
+      if (this.analyser) {
+        this.analyser.disconnect();
+        this.analyser = null;
+      }
+      if (this.audioContext && this.audioContext.state !== 'closed') {
+        this.audioContext.close().catch(() => {});
+        this.audioContext = null;
+      }
+  
+      // Context + source (already proven safe)
+      this.audioContext = new AudioContextCtor();
+      console.log('AudioContext created, sampleRate =', this.audioContext.sampleRate);
+  
+      const source = this.audioContext.createMediaStreamSource(this.mediaStream);
+      console.log('MediaStreamSource created (Electron debug)');
+  
+      // Optional analyser (should be safe too)
+      this.analyser = this.audioContext.createAnalyser();
+      this.analyser.fftSize = 256;
+      source.connect(this.analyser);
+      console.log('Analyser created & connected (Electron debug)');
+  
+      // 🔹 PHASE 3: ScriptProcessor, but NOT connected to destination yet
+      const bufferSize = 4096;
+      this.processor = this.audioContext.createScriptProcessor(bufferSize, 1, 1);
+      source.connect(this.processor);
+      console.log('ScriptProcessor created & connected to source (Electron debug)');
+  
+      this.processor.onaudioprocess = (event) => {
+        try {
+          if (!this.isRecording || !this.ws || this.ws.readyState !== WebSocket.OPEN) {
+            return;
+          }
+  
+          const inputData = event.inputBuffer.getChannelData(0);
+          const pcmData = new Int16Array(inputData.length);
+  
+          for (let i = 0; i < inputData.length; i++) {
+            const s = Math.max(-1, Math.min(1, inputData[i]));
+            pcmData[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
+          }
+  
+          const base64Audio = this.arrayBufferToBase64(pcmData.buffer);
+  
+          if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+            this.ws.send(JSON.stringify({
+              type: 'audio',
+              audio: base64Audio,
+              sampleRate: this.audioContext.sampleRate
+            }));
+          }
+        } catch (err) {
+          console.error('Error in onaudioprocess handler:', err);
+        }
+      };
+  
+      // NOTE: still no `processor.connect(this.audioContext.destination)`
+      // and you can add visualizer only if needed later
+      // this.drawVisualizer?.();
+  
+    } catch (err) {
+      console.error('Error in startAudioProcessing (PHASE 3):', err);
+      this.showToast?.('Failed to start audio processing: ' + (err.message || 'Unknown error'));
+      this.stopRecording?.();
+    }
   }
 
   arrayBufferToBase64(buffer) {
