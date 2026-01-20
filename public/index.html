@@ -18,7 +18,11 @@
         <span class="stealth-indicator" id="stealthIndicator">🕵️ Stealth ON</span>
       </div>
       <div class="title-bar-controls">
-        <button class="title-btn" id="opacityBtn" title="Toggle Opacity (Ctrl+Shift+O)">👁️</button>
+        <div class="opacity-control">
+          <span class="opacity-label">👁️</span>
+          <input type="range" id="opacitySlider" min="20" max="100" value="100" step="5" class="opacity-slider" title="Adjust Window Opacity">
+          <span class="opacity-value" id="opacityValue">100%</span>
+        </div>
         <button class="title-btn" id="stealthBtn" title="Toggle Stealth Mode (Ctrl+Shift+S)">🛡️</button>
         <button class="title-btn minimize" id="minimizeBtn" title="Hide (Ctrl+Shift+I)">─</button>
       </div>

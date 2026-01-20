@@ -100,6 +100,71 @@ body {
   color: white;
 }
 
+/* Opacity Control */
+.opacity-control {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 10px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  -webkit-app-region: no-drag;
+}
+
+.opacity-label {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+}
+
+.opacity-slider {
+  width: 80px;
+  height: 4px;
+  background: var(--bg-card-hover);
+  border-radius: 2px;
+  outline: none;
+  -webkit-appearance: none;
+  cursor: pointer;
+}
+
+.opacity-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  background: var(--primary);
+  border-radius: 50%;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.opacity-slider::-webkit-slider-thumb:hover {
+  background: var(--primary-light);
+  transform: scale(1.15);
+}
+
+.opacity-slider::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  background: var(--primary);
+  border-radius: 50%;
+  cursor: pointer;
+  border: none;
+  transition: all 0.2s;
+}
+
+.opacity-slider::-moz-range-thumb:hover {
+  background: var(--primary-light);
+  transform: scale(1.15);
+}
+
+.opacity-value {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  min-width: 38px;
+  font-weight: 500;
+}
+
 /* Electron-specific styles */
 body.electron-app {
   border-radius: 12px;
@@ -785,10 +850,13 @@ header h1 {
   min-height: 150px;
   max-height: 400px;
   overflow-y: auto;
+  overflow-x: hidden;
   font-size: 0.95rem;
   line-height: 1.7;
   flex: 1;
   padding-right: 0.5rem;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
 }
 
 .answer-panel .placeholder {
@@ -849,6 +917,9 @@ header h1 {
   color: var(--text-primary);
   font-size: 0.9rem;
   line-height: 1.7;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  max-width: 100%;
 }
 
 /* Code Block Styling */
@@ -858,6 +929,7 @@ header h1 {
   overflow: hidden;
   background: #1a1a2e;
   border: 1px solid var(--border);
+  max-width: 100%;
 }
 
 .code-header {
@@ -897,7 +969,10 @@ header h1 {
   margin: 0;
   padding: 1rem;
   overflow-x: auto;
+  overflow-y: auto;
+  max-height: 400px;
   background: #1a1a2e;
+  max-width: 100%;
 }
 
 .code-block code {
@@ -907,6 +982,8 @@ header h1 {
   color: #e0e0e0;
   white-space: pre;
   tab-size: 2;
+  display: block;
+  max-width: 100%;
 }
 
 /* Inline Code */
@@ -922,6 +999,7 @@ header h1 {
 /* Scrollbar for code blocks */
 .code-block pre::-webkit-scrollbar {
   height: 6px;
+  width: 6px;
 }
 
 .code-block pre::-webkit-scrollbar-track {
@@ -931,6 +1009,10 @@ header h1 {
 .code-block pre::-webkit-scrollbar-thumb {
   background: var(--border);
   border-radius: 3px;
+}
+
+.code-block pre::-webkit-scrollbar-thumb:hover {
+  background: var(--primary);
 }
 
 /* Typing cursor animation */
@@ -978,6 +1060,9 @@ header h1 {
   color: var(--text-primary);
   font-size: 1rem;
   line-height: 1.8;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  max-width: 100%;
 }
 
 .answer-text strong {

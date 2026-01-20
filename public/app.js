@@ -26,7 +26,7 @@ class InterviewAssistantApp {
     this.interviewContext = {
       jobRole: '',
       company: '',
-      techStack: '',
+      techStack: '', 
       experience: 'mid',
       resumeContext: ''
     };
@@ -536,6 +536,7 @@ class InterviewAssistantApp {
   formatAnswer(answer) {
     // First, extract and preserve code blocks
     const codeBlocks = [];
+    const inlineCodes = [];
     let processed = answer;
     
     // Handle fenced code blocks with language (```javascript ... ```)
@@ -545,15 +546,15 @@ class InterviewAssistantApp {
       return `__CODE_BLOCK_${index}__`;
     });
     
-    // Handle inline code (`code`)
-    processed = processed.replace(/`([^`]+)`/g, '<code class="inline-code">$1</code>');
+    // Extract and preserve inline code (`code`) before escaping
+    processed = processed.replace(/`([^`]+)`/g, (match, code) => {
+      const index = inlineCodes.length;
+      inlineCodes.push(code);
+      return `__INLINE_CODE_${index}__`;
+    });
     
     // Escape HTML for non-code content
     let formatted = this.escapeHtml(processed);
-    
-    // Restore inline code tags that were escaped
-    formatted = formatted.replace(/&lt;code class=&quot;inline-code&quot;&gt;/g, '<code class="inline-code">');
-    formatted = formatted.replace(/&lt;\/code&gt;/g, '</code>');
     
     // Bold text
     formatted = formatted.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
@@ -576,6 +577,11 @@ class InterviewAssistantApp {
     
     // Clean up nested p tags
     formatted = formatted.replace(/<p><\/p>/g, '');
+    
+    // Restore inline code (content was already extracted, just needs HTML escaping)
+    inlineCodes.forEach((code, index) => {
+      formatted = formatted.replace(`__INLINE_CODE_${index}__`, `<code class="inline-code">${this.escapeHtml(code)}</code>`);
+    });
     
     // Restore code blocks with proper formatting
     codeBlocks.forEach((block, index) => {
@@ -607,11 +613,21 @@ class InterviewAssistantApp {
   
       const source = this.audioContext.createMediaStreamSource(this.mediaStream);
       console.log('MediaStreamSource created');
+
+      // Create analyser for visualizer
+      this.analyser = this.audioContext.createAnalyser();
+      this.analyser.fftSize = 256;
+      console.log('Analyser created');
   
       const workletNode = new AudioWorkletNode(this.audioContext, 'pcm-worklet');
       console.log('WorkletNode created');
   
-      source.connect(workletNode);
+      // Connect: source -> analyser -> workletNode
+      source.connect(this.analyser);
+      this.analyser.connect(workletNode);
+
+      // Start visualizer animation
+      this.drawVisualizer();
   
       // reset buffer whenever we start
       this.pcmBuffer = [];
@@ -1260,7 +1276,8 @@ class ElectronControls {
     
     // Get control elements
     this.stealthBtn = document.getElementById('stealthBtn');
-    this.opacityBtn = document.getElementById('opacityBtn');
+    this.opacitySlider = document.getElementById('opacitySlider');
+    this.opacityValue = document.getElementById('opacityValue');
     this.minimizeBtn = document.getElementById('minimizeBtn');
     this.stealthIndicator = document.getElementById('stealthIndicator');
     
@@ -1269,8 +1286,8 @@ class ElectronControls {
       this.stealthBtn.addEventListener('click', () => this.toggleStealth());
     }
     
-    if (this.opacityBtn) {
-      this.opacityBtn.addEventListener('click', () => this.toggleOpacity());
+    if (this.opacitySlider) {
+      this.opacitySlider.addEventListener('input', (e) => this.handleOpacityChange(e));
     }
     
     if (this.minimizeBtn) {
@@ -1303,13 +1320,14 @@ class ElectronControls {
     }
   }
   
-  toggleOpacity() {
+  handleOpacityChange(event) {
     if (window.electronAPI) {
-      this.currentOpacity = this.currentOpacity > 0.5 ? 0.4 : 1.0;
+      const opacityPercent = parseInt(event.target.value);
+      this.currentOpacity = opacityPercent / 100;
       window.electronAPI.setOpacity(this.currentOpacity);
       
-      if (this.opacityBtn) {
-        this.opacityBtn.textContent = this.currentOpacity > 0.5 ? '👁️' : '👁️‍🗨️';
+      if (this.opacityValue) {
+        this.opacityValue.textContent = opacityPercent + '%';
       }
     }
   }
