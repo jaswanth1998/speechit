@@ -246,9 +246,19 @@ function registerShortcuts() {
     const currentOpacity = mainWindow.getOpacity();
     mainWindow.setOpacity(currentOpacity > 0.5 ? 0.3 : 1.0);
   });
+  
+  // Toggle minimize/maximize with Cmd/Ctrl + Shift + M
+  globalShortcut.register('CommandOrControl+Shift+M', () => {
+    if (mainWindow.isMinimized()) {
+      mainWindow.restore();
+      mainWindow.show();
+    } else {
+      mainWindow.minimize();
+    }
+  });
 }
 
-// App lifecycle
+// App lifecyclewbiefsfs
 app.whenReady().then(async () => {
   // Start the Express server first
   console.log('Starting server...');

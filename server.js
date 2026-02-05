@@ -190,7 +190,7 @@ You must now respond to the user’s interview question using the rules above.
 
     // Use streaming API
     const stream = await openai.chat.completions.create({
-      model: 'gpt-5.2',
+      model: 'gpt-5.1',
       messages: messages,
       max_completion_tokens: 800,
       stream: true

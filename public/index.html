@@ -8,6 +8,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
 </head>
 <body>
   <div class="container">
@@ -174,6 +175,19 @@
       </div>
     </div>
 
+    <!-- Firestore Messages Section -->
+    <div class="messages-panel">
+      <div class="panel-header">
+        <h2>💬 Messages from Firestore</h2>
+        <div class="panel-actions">
+          <span id="messageCount" class="message-count">0 messages</span>
+        </div>
+      </div>
+      <div id="messagesContainer" class="messages-container">
+        <p class="placeholder">Loading messages from Firestore...</p>
+      </div>
+    </div>
+
     <!-- Quick Tips -->
     <div class="tips-panel">
       <h3>💡 Quick Tips</h3>
@@ -205,6 +219,114 @@
   <div class="resize-area-bottom" id="resizeBottom"></div>
   <div class="resize-area-right" id="resizeRight"></div>
   <div class="resize-area-corner" id="resizeCorner"></div>
+
+  <!-- Firebase SDKs -->
+  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+  
+  <!-- Firebase Configuration -->
+  <script>
+    // Initialize Firebase
+    const firebaseConfig = {
+      apiKey: "AIzaSyBt6i1W4QgyChii1it3DnNIjFYmVqauT4s",
+      authDomain: "website-a04d0.firebaseapp.com",
+      databaseURL: "https://website-a04d0.firebaseio.com",
+      projectId: "website-a04d0",
+      storageBucket: "website-a04d0.appspot.com",
+      messagingSenderId: "500427658001",
+      appId: "1:500427658001:web:e845938052713f3ba172b0",
+      measurementId: "G-469GBRLNG4"
+    };
+
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.firestore();
+
+    // Listen to Firestore messages in realtime
+    function initFirestoreListener() {
+      const messagesContainer = document.getElementById('messagesContainer');
+      const messageCountEl = document.getElementById('messageCount');
+
+      db.collection('msgs')
+        .orderBy('timestamp', 'desc')
+        .onSnapshot((snapshot) => {
+          messagesContainer.innerHTML = '';
+          
+          if (snapshot.empty) {
+            messagesContainer.innerHTML = '<p class="placeholder">No messages found in Firestore</p>';
+            messageCountEl.textContent = '0 messages';
+            return;
+          }
+
+          messageCountEl.textContent = `${snapshot.size} message${snapshot.size !== 1 ? 's' : ''}`;
+          
+          snapshot.forEach((doc) => {
+            const data = doc.data();
+            const messageCard = createMessageCard(data, doc.id);
+            messagesContainer.appendChild(messageCard);
+          });
+
+          // Apply syntax highlighting to all code blocks
+          document.querySelectorAll('pre code').forEach((block) => {
+            hljs.highlightElement(block);
+          });
+        }, (error) => {
+          console.error('Error fetching messages:', error);
+          messagesContainer.innerHTML = `<p class="error">Error loading messages: ${error.message}</p>`;
+        });
+    }
+
+    function createMessageCard(data, docId) {
+      const card = document.createElement('div');
+      card.className = 'message-card';
+      
+      // Format timestamp
+      let timestampStr = 'No timestamp';
+      if (data.timestamp) {
+        const date = data.timestamp.toDate ? data.timestamp.toDate() : new Date(data.timestamp);
+        timestampStr = date.toLocaleString();
+      }
+
+      card.innerHTML = `
+        <div class="message-header">
+          <span class="message-time">🕒 ${timestampStr}</span>
+          <span class="message-id">#${docId.substring(0, 8)}</span>
+        </div>
+        ${data.msg ? `<div class="message-text">
+          <strong>Message:</strong>
+          <p>${escapeHtml(data.msg)}</p>
+        </div>` : ''}
+        ${data['code'] ? `<div class="message-code">
+          <div class="code-header">
+            <span class="code-lang">${data['language'] || 'code'}</span>
+            <button class="copy-code-btn" onclick="copyCode(this)" title="Copy code">📋</button>
+          </div>
+          <pre><code class="language-${(data['language'] || '').toLowerCase()}">${escapeHtml(data['code'])}</code></pre>
+        </div>` : ''}
+      `;
+
+      return card;
+    }
+
+    function escapeHtml(text) {
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    }
+
+    function copyCode(btn) {
+      const codeBlock = btn.closest('.message-code').querySelector('code');
+      navigator.clipboard.writeText(codeBlock.textContent).then(() => {
+        btn.textContent = '✓';
+        setTimeout(() => {
+          btn.textContent = '📋';
+        }, 2000);
+      });
+    }
+
+    // Initialize listener when page loads
+    window.addEventListener('DOMContentLoaded', initFirestoreListener);
+  </script>
 
   <script src="app.js"></script>
 </body>
