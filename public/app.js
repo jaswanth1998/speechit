@@ -350,6 +350,24 @@ class InterviewAssistantApp {
     }, 2000); // Wait 2 seconds of silence
   }
 
+  // Save question to Firebase (non-blocking, errors won't affect ChatGPT)
+  async saveQuestionToFirebase(question, hasImage = false) {
+    try {
+      // Check if Firebase is available
+      if (typeof db !== 'undefined') {
+        await db.collection('interviewQuestions').add({
+          question: question,
+          hasImage: hasImage,
+          timestamp: firebase.firestore.FieldValue.serverTimestamp(),
+        });
+        console.log('Question saved to Firebase');
+      }
+    } catch (error) {
+      // Log error but don't throw - this should not affect ChatGPT flow
+      console.error('Failed to save question to Firebase (non-critical):', error);
+    }
+  }
+
   async getInterviewAnswer(question, imageData = null) {
     if (this.isGeneratingAnswer) return;
     
@@ -362,6 +380,9 @@ class InterviewAssistantApp {
 
       // Create placeholder for streaming answer
       this.createStreamingAnswerElement(question);
+
+      // Save question to Firebase in parallel (non-blocking)
+      this.saveQuestionToFirebase(question, !!imageData);
 
       const response = await fetch('/api/chat', {
         method: 'POST',

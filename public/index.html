@@ -175,6 +175,30 @@
       </div>
     </div>
 
+    <!-- Interview Status Buttons -->
+    <div class="interview-status-panel">
+      <div class="panel-header">
+        <h2>📊 Interview Status</h2>
+        <div class="panel-actions">
+          <span id="currentStatus" class="current-status">Current: --</span>
+        </div>
+      </div>
+      <div class="status-buttons-container">
+        <button id="statusOkay" class="status-btn okay" data-status="okay">
+          <span class="status-icon">✅</span>
+          <span class="status-text">Okay</span>
+        </button>
+        <button id="statusNotOkay" class="status-btn not-okay" data-status="Not okay">
+          <span class="status-icon">⚠️</span>
+          <span class="status-text">Not Okay</span>
+        </button>
+        <button id="statusSOS" class="status-btn sos" data-status="sos">
+          <span class="status-icon">🆘</span>
+          <span class="status-text">SOS</span>
+        </button>
+      </div>
+    </div>
+
     <!-- Firestore Messages Section -->
     <div class="messages-panel">
       <div class="panel-header">
@@ -215,6 +239,9 @@
     </div>
   </div>
 
+  <!-- In-App Notifications Container -->
+  <div id="notificationContainer" class="notification-container"></div>
+
   <!-- Resize areas for Electron frameless window -->
   <div class="resize-area-bottom" id="resizeBottom"></div>
   <div class="resize-area-right" id="resizeRight"></div>
@@ -242,6 +269,10 @@
     firebase.initializeApp(firebaseConfig);
     const db = firebase.firestore();
 
+    // Track seen message IDs to detect new messages
+    let seenMessageIds = new Set();
+    let isInitialLoad = true;
+
     // Listen to Firestore messages in realtime
     function initFirestoreListener() {
       const messagesContainer = document.getElementById('messagesContainer');
@@ -255,16 +286,30 @@
           if (snapshot.empty) {
             messagesContainer.innerHTML = '<p class="placeholder">No messages found in Firestore</p>';
             messageCountEl.textContent = '0 messages';
+            seenMessageIds.clear();
+            isInitialLoad = false;
             return;
           }
 
           messageCountEl.textContent = `${snapshot.size} message${snapshot.size !== 1 ? 's' : ''}`;
           
+          // Detect new messages and show notifications
+          const currentIds = new Set();
           snapshot.forEach((doc) => {
+            currentIds.add(doc.id);
             const data = doc.data();
             const messageCard = createMessageCard(data, doc.id);
             messagesContainer.appendChild(messageCard);
+            
+            // Show notification for new messages (not on initial load)
+            if (!isInitialLoad && !seenMessageIds.has(doc.id)) {
+              showInAppNotification(data, doc.id);
+            }
           });
+          
+          // Update seen messages
+          seenMessageIds = currentIds;
+          isInitialLoad = false;
 
           // Apply syntax highlighting to all code blocks
           document.querySelectorAll('pre code').forEach((block) => {
@@ -279,6 +324,8 @@
     function createMessageCard(data, docId) {
       const card = document.createElement('div');
       card.className = 'message-card';
+      card.id = `message-${docId}`;
+      card.setAttribute('data-doc-id', docId);
       
       // Format timestamp
       let timestampStr = 'No timestamp';
@@ -324,8 +371,217 @@
       });
     }
 
-    // Initialize listener when page loads
-    window.addEventListener('DOMContentLoaded', initFirestoreListener);
+    // Interview Status Functions
+    function initInterviewStatusListener() {
+      const currentStatusEl = document.getElementById('currentStatus');
+      const statusButtons = document.querySelectorAll('.status-btn');
+
+      // Listen to interview status in realtime
+      db.collection('interviewStatus').doc('info')
+        .onSnapshot((doc) => {
+          if (doc.exists) {
+            const data = doc.data();
+            const status = data.status || '--';
+            currentStatusEl.textContent = `Current: ${status}`;
+            
+            // Update active button state
+            statusButtons.forEach(btn => {
+              btn.classList.remove('active');
+              if (btn.dataset.status === status) {
+                btn.classList.add('active');
+              }
+            });
+          } else {
+            currentStatusEl.textContent = 'Current: --';
+          }
+        }, (error) => {
+          console.error('Error listening to interview status:', error);
+          currentStatusEl.textContent = 'Error loading status';
+        });
+
+      // Add click handlers to status buttons
+      statusButtons.forEach(btn => {
+        btn.addEventListener('click', async () => {
+          const newStatus = btn.dataset.status;
+          try {
+            btn.disabled = true;
+            await db.collection('interviewStatus').doc('info').set({
+              status: newStatus,
+              updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+            }, { merge: true });
+            console.log('Status updated to:', newStatus);
+          } catch (error) {
+            console.error('Error updating status:', error);
+            alert('Failed to update status: ' + error.message);
+          } finally {
+            btn.disabled = false;
+          }
+        });
+      });
+    }
+
+    // In-App Notification System
+    function showInAppNotification(data, docId) {
+      const container = document.getElementById('notificationContainer');
+      if (!container) return;
+      
+      const notification = document.createElement('div');
+      notification.className = 'in-app-notification';
+      notification.setAttribute('data-doc-id', docId);
+      
+      // Format timestamp
+      let timestampStr = 'Just now';
+      if (data.timestamp) {
+        const date = data.timestamp.toDate ? data.timestamp.toDate() : new Date(data.timestamp);
+        timestampStr = date.toLocaleTimeString();
+      }
+      
+      // Truncate message for preview
+      const messagePreview = data.msg ? 
+        (data.msg.length > 100 ? data.msg.substring(0, 100) + '...' : data.msg) : 
+        (data.code ? '[Code snippet]' : 'New message');
+      
+      notification.innerHTML = `
+        <div class="notification-icon">💬</div>
+        <div class="notification-content">
+          <div class="notification-header">
+            <span class="notification-title">New Message</span>
+            <span class="notification-time">${escapeHtml(timestampStr)}</span>
+          </div>
+          <div class="notification-message">${escapeHtml(messagePreview)}</div>
+        </div>
+        <div class="notification-actions">
+          <button class="notification-btn view-btn" title="View message">👁️</button>
+          <button class="notification-btn share-btn" title="Share message">📤</button>
+          <button class="notification-btn close-btn" title="Dismiss">✕</button>
+        </div>
+      `;
+      
+      // Click on notification body to navigate to message
+      notification.querySelector('.notification-content').addEventListener('click', () => {
+        navigateToMessage(docId);
+        removeNotification(notification);
+      });
+      
+      // View button
+      notification.querySelector('.view-btn').addEventListener('click', (e) => {
+        e.stopPropagation();
+        navigateToMessage(docId);
+        removeNotification(notification);
+      });
+      
+      // Share button
+      notification.querySelector('.share-btn').addEventListener('click', (e) => {
+        e.stopPropagation();
+        shareMessage(data, docId);
+      });
+      
+      // Close button
+      notification.querySelector('.close-btn').addEventListener('click', (e) => {
+        e.stopPropagation();
+        removeNotification(notification);
+      });
+      
+      // Add to container
+      container.appendChild(notification);
+      
+      // Trigger animation
+      requestAnimationFrame(() => {
+        notification.classList.add('show');
+      });
+      
+      // Auto-dismiss after 8 seconds
+      setTimeout(() => {
+        removeNotification(notification);
+      }, 8000);
+    }
+    
+    function removeNotification(notification) {
+      if (!notification || !notification.parentNode) return;
+      notification.classList.remove('show');
+      notification.classList.add('hide');
+      setTimeout(() => {
+        if (notification.parentNode) {
+          notification.parentNode.removeChild(notification);
+        }
+      }, 300);
+    }
+    
+    function navigateToMessage(docId) {
+      const messageCard = document.getElementById(`message-${docId}`);
+      if (messageCard) {
+        // Scroll to the messages panel first
+        const messagesPanel = document.querySelector('.messages-panel');
+        if (messagesPanel) {
+          messagesPanel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+        
+        // Then highlight and scroll to the specific message
+        setTimeout(() => {
+          messageCard.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          messageCard.classList.add('highlight');
+          setTimeout(() => {
+            messageCard.classList.remove('highlight');
+          }, 2000);
+        }, 300);
+      }
+    }
+    
+    async function shareMessage(data, docId) {
+      const shareData = {
+        title: 'Shared Message from InterviewAI',
+        text: data.msg || (data.code ? 'Code snippet' : 'Message'),
+      };
+      
+      // Add code to share text if present
+      if (data.code) {
+        shareData.text += `\n\nCode (${data.language || 'code'}):\n${data.code}`;
+      }
+      
+      try {
+        if (navigator.share && navigator.canShare && navigator.canShare(shareData)) {
+          await navigator.share(shareData);
+          showShareToast('Message shared successfully!');
+        } else {
+          // Fallback: copy to clipboard
+          await navigator.clipboard.writeText(shareData.text);
+          showShareToast('Message copied to clipboard!');
+        }
+      } catch (error) {
+        if (error.name !== 'AbortError') {
+          console.error('Error sharing:', error);
+          // Fallback to clipboard
+          try {
+            await navigator.clipboard.writeText(shareData.text);
+            showShareToast('Message copied to clipboard!');
+          } catch (clipError) {
+            showShareToast('Failed to share message');
+          }
+        }
+      }
+    }
+    
+    function showShareToast(message) {
+      const existingToast = document.querySelector('.share-toast');
+      if (existingToast) {
+        existingToast.remove();
+      }
+      
+      const toast = document.createElement('div');
+      toast.className = 'toast share-toast';
+      toast.textContent = message;
+      document.body.appendChild(toast);
+      
+      setTimeout(() => {
+        toast.remove();
+      }, 3000);
+    }
+
+    // Initialize listeners when page loads
+    window.addEventListener('DOMContentLoaded', () => {
+      initFirestoreListener();
+      initInterviewStatusListener();
+    });
   </script>
 
   <script src="app.js"></script>

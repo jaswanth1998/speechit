@@ -229,6 +229,8 @@ function startServer() {
 }
 
 function registerShortcuts() {
+  const MOVE_STEP = 50; // Pixels to move per key press
+  
   // Toggle visibility with Cmd/Ctrl + Shift + I
   globalShortcut.register('CommandOrControl+Shift+I', () => {
     toggleVisibility();
@@ -254,6 +256,35 @@ function registerShortcuts() {
       mainWindow.show();
     } else {
       mainWindow.minimize();
+    }
+  });
+  
+  // Move window with Cmd/Ctrl + Shift + Arrow keys
+  globalShortcut.register('CommandOrControl+Shift+Left', () => {
+    if (mainWindow) {
+      const [x, y] = mainWindow.getPosition();
+      mainWindow.setPosition(x - MOVE_STEP, y);
+    }
+  });
+  
+  globalShortcut.register('CommandOrControl+Shift+Right', () => {
+    if (mainWindow) {
+      const [x, y] = mainWindow.getPosition();
+      mainWindow.setPosition(x + MOVE_STEP, y);
+    }
+  });
+  
+  globalShortcut.register('CommandOrControl+Shift+Up', () => {
+    if (mainWindow) {
+      const [x, y] = mainWindow.getPosition();
+      mainWindow.setPosition(x, y - MOVE_STEP);
+    }
+  });
+  
+  globalShortcut.register('CommandOrControl+Shift+Down', () => {
+    if (mainWindow) {
+      const [x, y] = mainWindow.getPosition();
+      mainWindow.setPosition(x, y + MOVE_STEP);
     }
   });
 }
