@@ -18,6 +18,7 @@ class InterviewAssistantApp {
     this.isGeneratingAnswer = false;
     this.answerHistory = [];
     this.currentStreamingAnswer = '';
+    this.showAnswerQuestions = true;
     this.conversationHistory = []; // Track Q&A for context
 
     this.pcmBuffer = [];                  // temp buffer for PCM samples
@@ -279,14 +280,16 @@ class InterviewAssistantApp {
         break;
 
       case 'final':
+        console.log('Final transcription received:1', data.text);
         this.addQuestion(data.text);
         this.partialText.textContent = '';
         break;
 
-      case 'final_with_timestamps':
-        this.addQuestion(data.text);
-        this.partialText.textContent = '';
-        break;
+      // case 'final_with_timestamps':
+      //   console.log('Final transcription received:2', data.text);
+      //   this.addQuestion(data.text);
+      //   this.partialText.textContent = '';
+      //   break;
 
       case 'error':
         console.error('Transcription error:', data.message);
@@ -307,14 +310,14 @@ class InterviewAssistantApp {
     if (placeholder) {
       placeholder.remove();
     }
-
+    console.log('Adding question:', text, this.currentQuestion);
     // Append to current question
     if (this.currentQuestion) {
       this.currentQuestion += ' ' + text;
     } else {
       this.currentQuestion = text;
     }
-
+    
     // Update display with highlighting
     this.transcript.innerHTML = `<p class="question-text">${this.currentQuestion}</p>`;
     this.transcript.scrollTop = this.transcript.scrollHeight;
@@ -335,8 +338,12 @@ class InterviewAssistantApp {
       
       // Check if it looks like a question or statement requiring response
       const isQuestion = question.endsWith('?') || 
-                        /^(what|why|how|when|where|who|which|can|could|would|should|is|are|do|does|did|will|tell|describe|explain|walk|give)/i.test(question);
-      
+                        /^(what|why|how|when|where|who|which|can|could|would|should|is|are|do|does|did|will|tell|describe|explain|walk|give)/i.test(question)
+                        || question.split('.').length >= 3
+                        || question.split(' ').length >= 25
+                        
+                        ; // Heuristic: if it's a longer statement, it might still need an answer
+      console.log('Detecting question completion. Is question:', isQuestion, '| Question:', question);
       if (isQuestion && question.split(' ').length >= 3 && !this.isGeneratingAnswer) {
         this.questionCount++;
         this.questionCountEl.textContent = this.questionCount;
@@ -347,7 +354,7 @@ class InterviewAssistantApp {
         
         this.getInterviewAnswer(questionToAnswer);
       }
-    }, 2000); // Wait 2 seconds of silence
+    }, 1000); // Wait 1 second of silence
   }
 
   // Save question to Firebase (non-blocking, errors won't affect ChatGPT)
@@ -1169,6 +1176,12 @@ class InterviewAssistantApp {
       this.copyAnswer();
     }
 
+    // Ctrl/Cmd + Shift + W: Toggle question visibility in answer cards
+    if ((event.ctrlKey || event.metaKey) && event.shiftKey && event.key.toLowerCase() === 'w') {
+      event.preventDefault();
+      this.toggleAnswerQuestionVisibility();
+    }
+
     // Ctrl/Cmd + E: Toggle expand
     if ((event.ctrlKey || event.metaKey) && event.key === 'e') {
       event.preventDefault();
@@ -1270,6 +1283,12 @@ class InterviewAssistantApp {
     setTimeout(() => {
       toast.remove();
     }, 3000);
+  }
+
+  toggleAnswerQuestionVisibility() {
+    this.showAnswerQuestions = !this.showAnswerQuestions;
+    this.answerPanel.classList.toggle('hide-answer-questions', !this.showAnswerQuestions);
+    this.showToast(this.showAnswerQuestions ? 'Questions shown' : 'Questions hidden');
   }
 
   escapeHtml(text) {
