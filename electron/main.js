@@ -1,9 +1,8 @@
-const { app, BrowserWindow, globalShortcut, ipcMain, Tray, Menu, screen } = require('electron');
+const { app, BrowserWindow, globalShortcut, ipcMain, screen } = require('electron');
 const path = require('path');
 const { spawn } = require('child_process');
 
 let mainWindow;
-let tray;
 let serverProcess;
 let isVisible = true;
 let isStealthMode = false;
@@ -109,68 +108,6 @@ function createWindow() {
       .title-bar-controls, button, input, textarea, select, a, [role="button"] { -webkit-app-region: no-drag; }
     `);
   });
-}
-
-function createTray() {
-  // Create tray icon (you can replace with your own icon)
-  const iconPath = path.join(__dirname, 'icon.png');
-  
-  // Use a default icon if custom one doesn't exist
-  try {
-    tray = new Tray(iconPath);
-  } catch (e) {
-    // Create a simple tray without icon on error
-    const { nativeImage } = require('electron');
-    const icon = nativeImage.createEmpty();
-    tray = new Tray(icon);
-  }
-  
-  const contextMenu = Menu.buildFromTemplate([
-    { 
-      label: '👁️ Show/Hide', 
-      click: () => toggleVisibility() 
-    },
-    { 
-      label: '🔝 Always on Top', 
-      type: 'checkbox', 
-      checked: true,
-      click: (menuItem) => {
-        mainWindow.setAlwaysOnTop(menuItem.checked);
-      }
-    },
-    { 
-      label: '🕵️ Stealth Mode (Hidden from Screen Share)', 
-      type: 'checkbox', 
-      checked: true,
-      click: (menuItem) => {
-        isStealthMode = menuItem.checked;
-        mainWindow.setContentProtection(menuItem.checked);
-      }
-    },
-    { type: 'separator' },
-    { 
-      label: '📐 Reset Position', 
-      click: () => resetWindowPosition() 
-    },
-    { 
-      label: '🔄 Reload', 
-      click: () => mainWindow.reload() 
-    },
-    { type: 'separator' },
-    { 
-      label: '❌ Quit', 
-      click: () => {
-        app.isQuitting = true;
-        app.quit();
-      }
-    }
-  ]);
-  
-  tray.setToolTip('InterviewAI - Stealth Mode Active');
-  tray.setContextMenu(contextMenu);
-  
-  // Click on tray to toggle visibility
-  tray.on('click', () => toggleVisibility());
 }
 
 function toggleVisibility() {
@@ -297,7 +234,6 @@ app.whenReady().then(async () => {
   
   // Then create the window
   createWindow();
-  createTray();
   registerShortcuts();
   
   app.on('activate', () => {

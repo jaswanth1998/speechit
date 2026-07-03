@@ -320,7 +320,7 @@ class InterviewAssistantApp {
     
     // Update display with highlighting
     this.transcript.innerHTML = `<p class="question-text">${this.currentQuestion}</p>`;
-    this.transcript.scrollTop = this.transcript.scrollHeight;
+    // this.transcript.scrollTop = this.transcript.scrollHeight;
 
     // Detect question completion and auto-generate answer
     this.detectQuestionComplete(text);
@@ -488,7 +488,7 @@ class InterviewAssistantApp {
       // Auto-scroll to show latest content
       const answerCard = document.getElementById('current-streaming-answer');
       if (answerCard) {
-        answerCard.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        // answerCard.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
       }
     }
   }
